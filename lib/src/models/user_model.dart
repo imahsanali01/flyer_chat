@@ -49,14 +49,67 @@ class UserModel {
   }
 
   factory UserModel.fromMap(Map<String, dynamic> map) {
+    // Handle lastSeen field
+    DateTime lastSeen;
+    final lastSeenData = map['lastSeen'];
+    if (lastSeenData is Timestamp) {
+      lastSeen = lastSeenData.toDate();
+    } else if (lastSeenData is DateTime) {
+      lastSeen = lastSeenData;
+    } else {
+      lastSeen = DateTime.now();
+    }
+
+    // Handle required fields with default values if null
+    String uid = '';
+    if (map['uid'] != null) {
+      uid = map['uid'].toString();
+    } else if (map['id'] != null) { // Sometimes Firebase uses 'id' instead of 'uid'
+      uid = map['id'].toString();
+    }
+
+    String email = '';
+    if (map['email'] != null) {
+      email = map['email'].toString();
+    }
+
+    String displayName = '';
+    if (map['displayName'] != null) {
+      displayName = map['displayName'].toString();
+    } else if (map['name'] != null) { // Sometimes 'name' is used instead of 'displayName'
+      displayName = map['name'].toString();
+    } else if (email.isNotEmpty) {
+      displayName = email.split('@')[0]; // Use email username as fallback
+    }
+
+    // Handle optional fields
+    String? photoURL;
+    if (map['photoURL'] != null) {
+      photoURL = map['photoURL'].toString();
+    } else if (map['photoUrl'] != null) { // Handle alternative casing
+      photoURL = map['photoUrl'].toString();
+    }
+
+    String? status;
+    if (map['status'] != null) {
+      status = map['status'].toString();
+    }
+
+    bool isOnline = false;
+    if (map['isOnline'] != null) {
+      isOnline = map['isOnline'] is bool 
+          ? map['isOnline'] 
+          : map['isOnline'].toString().toLowerCase() == 'true';
+    }
+
     return UserModel(
-      uid: map['uid'] as String,
-      email: map['email'] as String,
-      displayName: map['displayName'] as String,
-      photoURL: map['photoURL'] as String?,
-      status: map['status'] as String?,
-      lastSeen: (map['lastSeen'] as Timestamp).toDate(),
-      isOnline: map['isOnline'] as bool? ?? false,
+      uid: uid,
+      email: email,
+      displayName: displayName,
+      photoURL: photoURL,
+      status: status,
+      lastSeen: lastSeen,
+      isOnline: isOnline,
     );
   }
 
@@ -73,10 +126,15 @@ class UserModel {
       uid: uid ?? this.uid,
       email: email ?? this.email,
       displayName: displayName ?? this.displayName,
-      photoURL: photoURL ?? this.photoURL,
+      photoURL: photoURL ?? this.photoURL ?? '',
       status: status ?? this.status,
       lastSeen: lastSeen ?? this.lastSeen,
       isOnline: isOnline ?? this.isOnline,
     );
+  }
+
+  @override
+  String toString() {
+    return 'UserModel(uid: $uid, email: $email, displayName: $displayName, photoURL: $photoURL, status: $status, lastSeen: $lastSeen, isOnline: $isOnline)';
   }
 }

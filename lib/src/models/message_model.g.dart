@@ -25,13 +25,18 @@ class MessageModelAdapter extends TypeAdapter<MessageModel> {
       timestamp: fields[5] as DateTime,
       isRead: fields[6] as bool,
       metadata: (fields[7] as Map?)?.cast<String, dynamic>(),
+      replyTo: fields[8] as String?,
+      mentions: (fields[9] as List?)?.cast<String>(),
+      isEdited: fields[10] as bool,
+      editedAt: fields[11] as DateTime?,
+      isDeleted: fields[12] as bool,
     );
   }
 
   @override
   void write(BinaryWriter writer, MessageModel obj) {
     writer
-      ..writeByte(8)
+      ..writeByte(13)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -47,7 +52,17 @@ class MessageModelAdapter extends TypeAdapter<MessageModel> {
       ..writeByte(6)
       ..write(obj.isRead)
       ..writeByte(7)
-      ..write(obj.metadata);
+      ..write(obj.metadata)
+      ..writeByte(8)
+      ..write(obj.replyTo)
+      ..writeByte(9)
+      ..write(obj.mentions)
+      ..writeByte(10)
+      ..write(obj.isEdited)
+      ..writeByte(11)
+      ..write(obj.editedAt)
+      ..writeByte(12)
+      ..write(obj.isDeleted);
   }
 
   @override
@@ -78,6 +93,10 @@ class MessageTypeAdapter extends TypeAdapter<MessageType> {
         return MessageType.video;
       case 4:
         return MessageType.file;
+      case 5:
+        return MessageType.location;
+      case 6:
+        return MessageType.sticker;
       default:
         return MessageType.text;
     }
@@ -100,6 +119,12 @@ class MessageTypeAdapter extends TypeAdapter<MessageType> {
         break;
       case MessageType.file:
         writer.writeByte(4);
+        break;
+      case MessageType.location:
+        writer.writeByte(5);
+        break;
+      case MessageType.sticker:
+        writer.writeByte(6);
         break;
     }
   }

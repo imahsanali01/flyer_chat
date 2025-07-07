@@ -14,7 +14,11 @@ enum MessageType {
   @HiveField(3)
   video,
   @HiveField(4)
-  file
+  file,
+  @HiveField(5)
+  location,
+  @HiveField(6)
+  sticker
 }
 
 @HiveType(typeId: 2)
@@ -43,6 +47,21 @@ class MessageModel {
   @HiveField(7)
   final Map<String, dynamic>? metadata;
 
+  @HiveField(8)
+  final String? replyTo;
+
+  @HiveField(9)
+  final List<String>? mentions;
+
+  @HiveField(10)
+  final bool isEdited;
+
+  @HiveField(11)
+  final DateTime? editedAt;
+
+  @HiveField(12)
+  final bool isDeleted;
+
   MessageModel({
     required this.id,
     required this.senderId,
@@ -52,6 +71,11 @@ class MessageModel {
     required this.timestamp,
     this.isRead = false,
     this.metadata,
+    this.replyTo,
+    this.mentions,
+    this.isEdited = false,
+    this.editedAt,
+    this.isDeleted = false,
   });
 
   factory MessageModel.fromMap(Map<String, dynamic> map) {
@@ -66,6 +90,13 @@ class MessageModel {
       timestamp: (map['timestamp'] as Timestamp).toDate(),
       isRead: map['isRead'] as bool? ?? false,
       metadata: map['metadata'] as Map<String, dynamic>?,
+      replyTo: map['replyTo'] as String?,
+      mentions: (map['mentions'] as List<dynamic>?)?.cast<String>(),
+      isEdited: map['isEdited'] as bool? ?? false,
+      editedAt: map['editedAt'] != null
+          ? (map['editedAt'] as Timestamp).toDate()
+          : null,
+      isDeleted: map['isDeleted'] as bool? ?? false,
     );
   }
 
@@ -79,6 +110,11 @@ class MessageModel {
       'timestamp': Timestamp.fromDate(timestamp),
       'isRead': isRead,
       'metadata': metadata,
+      'replyTo': replyTo,
+      'mentions': mentions,
+      'isEdited': isEdited,
+      'editedAt': editedAt != null ? Timestamp.fromDate(editedAt!) : null,
+      'isDeleted': isDeleted,
     };
   }
 
@@ -91,6 +127,11 @@ class MessageModel {
     DateTime? timestamp,
     bool? isRead,
     Map<String, dynamic>? metadata,
+    String? replyTo,
+    List<String>? mentions,
+    bool? isEdited,
+    DateTime? editedAt,
+    bool? isDeleted,
   }) {
     return MessageModel(
       id: id ?? this.id,
@@ -101,6 +142,11 @@ class MessageModel {
       timestamp: timestamp ?? this.timestamp,
       isRead: isRead ?? this.isRead,
       metadata: metadata ?? this.metadata,
+      replyTo: replyTo ?? this.replyTo,
+      mentions: mentions ?? this.mentions,
+      isEdited: isEdited ?? this.isEdited,
+      editedAt: editedAt ?? this.editedAt,
+      isDeleted: isDeleted ?? this.isDeleted,
     );
   }
 }
