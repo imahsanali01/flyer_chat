@@ -26,7 +26,7 @@ class MyApp extends StatelessWidget {
       child: MaterialApp(
         title: 'Flyer Chat',
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
+      theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(
             seedColor: Colors.blue,
             brightness: Brightness.light,
@@ -39,7 +39,7 @@ class MyApp extends StatelessWidget {
             brightness: Brightness.dark,
           ),
           useMaterial3: true,
-        ),
+      ),
         home: Consumer<AuthService>(
           builder: (context, authService, _) {
             return authService.currentUser != null

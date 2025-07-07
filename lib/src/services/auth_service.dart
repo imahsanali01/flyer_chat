@@ -3,15 +3,22 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
 import 'dart:io';
+import 'package:local_auth/local_auth.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import './secure_storage_service.dart';
 
 class AuthService extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final LocalAuthentication _localAuth = LocalAuthentication();
+  final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
   UserModel? _user;
   DateTime? _lastLoginAttempt;
   int _loginAttempts = 0;
+  bool _biometricEnabled = false;
 
   UserModel? get currentUser => _user;
+  bool get biometricEnabled => _biometricEnabled;
 
   AuthService() {
     _initializeAuth();
@@ -209,6 +216,116 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  Future<void> reauthenticate(String password) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null || user.email == null) {
+        throw 'No user is currently signed in';
+      }
+
+      // Create credentials
+      final credential = EmailAuthProvider.credential(
+        email: user.email!,
+        password: password,
+      );
+
+      // Reauthenticate
+      await user.reauthenticateWithCredential(credential);
+    } on FirebaseAuthException catch (e) {
+      throw _getReadableError(e);
+    } catch (e) {
+      throw 'Failed to reauthenticate: $e';
+    }
+  }
+
+  Future<void> changePassword(String newPassword) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        throw 'No user is currently signed in';
+      }
+
+      if (!_isStrongPassword(newPassword)) {
+        throw 'Password must be at least 8 characters long and contain uppercase letters and numbers';
+      }
+
+      await user.updatePassword(newPassword);
+    } on FirebaseAuthException catch (e) {
+      throw _getReadableError(e);
+    } catch (e) {
+      throw 'Failed to change password: $e';
+    }
+  }
+
+  Future<void> deleteAccount(String password) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null || user.email == null) {
+        throw 'No user is currently signed in';
+      }
+
+      // First, reauthenticate the user
+      await reauthenticate(password);
+
+      // Get user data for cleanup
+      final uid = user.uid;
+
+      // Start cleanup
+      final batch = _firestore.batch();
+
+      // Delete user's messages from all chats
+      final chats = await _firestore
+          .collection('chats')
+          .where('participants', arrayContains: uid)
+          .get();
+
+      for (final chat in chats.docs) {
+        // Delete messages in batches of 500 (Firestore limit)
+        final messages = await chat.reference
+            .collection('messages')
+            .where('senderId', isEqualTo: uid)
+            .get();
+
+        for (final message in messages.docs) {
+          batch.delete(message.reference);
+        }
+
+        // Update chat metadata or delete if no other participants
+        final participants = List<String>.from(chat.data()['participants'] ?? []);
+        participants.remove(uid);
+        if (participants.isEmpty) {
+          batch.delete(chat.reference);
+        } else {
+          batch.update(chat.reference, {
+            'participants': participants,
+            'lastUpdated': Timestamp.now(),
+          });
+        }
+      }
+
+      // Delete user document
+      batch.delete(_firestore.collection('users').doc(uid));
+
+      // Commit all Firestore changes
+      await batch.commit();
+
+      // Delete user authentication
+      await user.delete();
+
+      // Clear local storage
+      final storage = SecureStorageService();
+      await storage.deleteAllData();
+
+      // Clear local state
+      _user = null;
+      notifyListeners();
+    } on FirebaseAuthException catch (e) {
+      throw _getReadableError(e);
+    } catch (e) {
+      throw 'Failed to delete account: $e';
+    }
+  }
+
   bool _isStrongPassword(String password) {
     return password.length >= 8 && 
            RegExp(r'[A-Z]').hasMatch(password) && 
@@ -255,6 +372,14 @@ class AuthService extends ChangeNotifier {
         return 'Password is too weak';
       case 'operation-not-allowed':
         return 'Email/password accounts are not enabled';
+      case 'requires-recent-login':
+        return 'Please log in again before deleting your account';
+      case 'expired-action-code':
+        return 'The password reset code has expired';
+      case 'invalid-action-code':
+        return 'The password reset code is invalid';
+      case 'user-disabled':
+        return 'This account has been disabled';
       default:
         return e.message ?? 'An error occurred';
     }
@@ -266,6 +391,158 @@ class AuthService extends ChangeNotifier {
       return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
     } on SocketException catch (_) {
       return false;
+    }
+  }
+
+  Future<void> sendPasswordResetEmail(String email) async {
+    try {
+      if (!_isValidEmail(email)) {
+        throw FirebaseAuthException(
+          code: 'invalid-email',
+          message: 'The email address is invalid.',
+        );
+      }
+
+      await _auth.sendPasswordResetEmail(email: email);
+    } on FirebaseAuthException catch (e) {
+      throw _getReadableError(e);
+    } catch (e) {
+      throw 'An error occurred while sending password reset email';
+    }
+  }
+
+  Future<void> verifyPasswordResetCode(String code) async {
+    try {
+      await _auth.verifyPasswordResetCode(code);
+    } on FirebaseAuthException catch (e) {
+      throw _getReadableError(e);
+    } catch (e) {
+      throw 'An error occurred while verifying reset code';
+    }
+  }
+
+  Future<void> confirmPasswordReset(String code, String newPassword) async {
+    try {
+      if (!_isStrongPassword(newPassword)) {
+        throw 'Password must be at least 8 characters long and contain uppercase letters and numbers';
+      }
+
+      await _auth.confirmPasswordReset(code: code, newPassword: newPassword);
+    } on FirebaseAuthException catch (e) {
+      throw _getReadableError(e);
+    } catch (e) {
+      throw 'An error occurred while resetting password';
+    }
+  }
+
+  Future<void> sendEmailVerification() async {
+    try {
+      final user = _auth.currentUser;
+      if (user != null && !user.emailVerified) {
+        await user.sendEmailVerification();
+      }
+    } catch (e) {
+      throw 'An error occurred while sending verification email';
+    }
+  }
+
+  bool isEmailVerified() {
+    return _auth.currentUser?.emailVerified ?? false;
+  }
+
+  Future<bool> isBiometricAvailable() async {
+    try {
+      // Skip biometric check on emulators
+      if (Platform.isAndroid) {
+        final androidInfo = await _deviceInfo.androidInfo;
+        if (!androidInfo.isPhysicalDevice) {
+          debugPrint('Running on emulator - biometrics disabled');
+          return false;
+        }
+      }
+
+      // Check device support first as it's more reliable
+      if (!await _localAuth.isDeviceSupported()) {
+        return false;
+      }
+
+      // Only check canCheckBiometrics if device is supported
+      return await _localAuth.canCheckBiometrics;
+    } catch (e) {
+      debugPrint('Error checking biometric availability: $e');
+      return false;
+    }
+  }
+
+  Future<void> enableBiometric() async {
+    try {
+      final isAvailable = await isBiometricAvailable();
+      if (!isAvailable) {
+        throw 'Biometric authentication is not available on this device';
+      }
+
+      final didAuthenticate = await _localAuth.authenticate(
+        localizedReason: 'Please authenticate to enable biometric login',
+        options: const AuthenticationOptions(
+          stickyAuth: true,
+          biometricOnly: true,
+        ),
+      );
+
+      if (didAuthenticate) {
+        _biometricEnabled = true;
+        // Store user preference in Firestore
+        if (_user != null) {
+          await _firestore
+              .collection('users')
+              .doc(_user!.uid)
+              .update({'biometricEnabled': true});
+        }
+        notifyListeners();
+      }
+    } catch (e) {
+      throw 'Failed to enable biometric authentication';
+    }
+  }
+
+  Future<void> disableBiometric() async {
+    try {
+      _biometricEnabled = false;
+      if (_user != null) {
+        await _firestore
+            .collection('users')
+            .doc(_user!.uid)
+            .update({'biometricEnabled': false});
+      }
+      notifyListeners();
+    } catch (e) {
+      throw 'Failed to disable biometric authentication';
+    }
+  }
+
+  Future<UserModel?> signInWithBiometric() async {
+    try {
+      if (!_biometricEnabled) {
+        throw 'Biometric authentication is not enabled';
+      }
+
+      final didAuthenticate = await _localAuth.authenticate(
+        localizedReason: 'Please authenticate to login',
+        options: const AuthenticationOptions(
+          stickyAuth: true,
+          biometricOnly: true,
+        ),
+      );
+
+      if (didAuthenticate && _user != null) {
+        // Re-authenticate with Firebase using stored credentials
+        // Note: You would need to securely store credentials for this
+        return _user;
+      } else {
+        throw 'Biometric authentication failed';
+      }
+    } catch (e) {
+      throw 'Failed to authenticate with biometrics';
     }
   }
 
