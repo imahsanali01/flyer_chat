@@ -6,8 +6,10 @@ import 'dart:io';
 import 'package:local_auth/local_auth.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import './secure_storage_service.dart';
+import 'package:flutter/material.dart';
+import 'dart:async';
 
-class AuthService extends ChangeNotifier {
+class AuthService extends ChangeNotifier with WidgetsBindingObserver {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final LocalAuthentication _localAuth = LocalAuthentication();
@@ -16,12 +18,14 @@ class AuthService extends ChangeNotifier {
   DateTime? _lastLoginAttempt;
   int _loginAttempts = 0;
   bool _biometricEnabled = false;
+  Timer? _heartbeatTimer;
 
   UserModel? get currentUser => _user;
   bool get biometricEnabled => _biometricEnabled;
 
   AuthService() {
     _initializeAuth();
+    WidgetsBinding.instance.addObserver(this);
   }
 
   Future<void> _initializeAuth() async {
@@ -34,8 +38,10 @@ class AuthService extends ChangeNotifier {
       _auth.authStateChanges().listen((User? user) async {
         if (user != null) {
           await _loadUserData(user.uid);
+          _startHeartbeat();
         } else {
           _user = null;
+          _stopHeartbeat();
           notifyListeners();
         }
       });
@@ -546,8 +552,33 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  void _startHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      updateUserStatus(isOnline: true);
+    });
+    updateUserStatus(isOnline: true);
+  }
+
+  void _stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+    updateUserStatus(isOnline: false);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_user == null) return;
+    if (state == AppLifecycleState.resumed) {
+      _startHeartbeat();
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive || state == AppLifecycleState.detached) {
+      _stopHeartbeat();
+    }
+  }
+
   @override
   void dispose() {
+    _heartbeatTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _user = null;
     super.dispose();
   }

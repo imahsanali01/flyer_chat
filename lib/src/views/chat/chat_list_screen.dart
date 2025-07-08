@@ -68,33 +68,54 @@ class ChatListScreen extends StatelessWidget {
             itemCount: users.length,
             itemBuilder: (context, index) {
               final user = users[index];
-              return ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: Theme.of(context).primaryColor,
-                  child: Text(
-                    user.displayName[0].toUpperCase(),
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                ),
-                title: Text(user.displayName),
-                subtitle: Text(user.status ?? 'No status'),
-                trailing: Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: user.isOnline ? Colors.green : Colors.grey,
-                  ),
-                ),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ChatScreen(
-                        currentUser: currentUser!,
-                        otherUser: user,
+              final chatId = [currentUser!.uid, user.uid]..sort();
+              final chatDocId = chatId.join('_');
+              return FutureBuilder<QuerySnapshot>(
+                future: FirebaseFirestore.instance
+                    .collection('chats')
+                    .doc(chatDocId)
+                    .collection('messages')
+                    .orderBy('timestamp', descending: true)
+                    .limit(1)
+                    .get(),
+                builder: (context, snapshot) {
+                  String subtitle = user.status ?? 'No status';
+                  if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+                    final lastMsg = snapshot.data!.docs.first.data() as Map<String, dynamic>;
+                    subtitle = lastMsg['content'] ?? '';
+                  }
+                  // Robust online status: only show online if lastSeen is recent
+                  final now = DateTime.now();
+                  final isRecentlyOnline = user.isOnline && now.difference(user.lastSeen).inSeconds < 30;
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: Theme.of(context).primaryColor,
+                      child: Text(
+                        user.displayName[0].toUpperCase(),
+                        style: const TextStyle(color: Colors.white),
                       ),
                     ),
+                    title: Text(user.displayName),
+                    subtitle: Text(subtitle),
+                    trailing: Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isRecentlyOnline ? Colors.green : Colors.grey,
+                      ),
+                    ),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ChatScreen(
+                            currentUser: currentUser,
+                            otherUser: user,
+                          ),
+                        ),
+                      );
+                    },
                   );
                 },
               );
