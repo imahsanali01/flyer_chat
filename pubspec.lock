@@ -22,6 +22,14 @@ packages:
     description: dart
     source: sdk
     version: "0.3.3"
+  agora_rtc_engine:
+    dependency: "direct main"
+    description:
+      name: agora_rtc_engine
+      sha256: f3b2cf4292692a4de45272adae79554f4942624af5049d222ac0dbe981944070
+      url: "https://pub.dev"
+    source: hosted
+    version: "6.5.2"
   analyzer:
     dependency: transitive
     description:
@@ -805,6 +813,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.5"
+  iris_method_channel:
+    dependency: transitive
+    description:
+      name: iris_method_channel
+      sha256: "62e02acf04621796bc92b5a0dbcb3346733ce3c38988254c05e05cd05e397914"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.2.3"
   js:
     dependency: transitive
     description:

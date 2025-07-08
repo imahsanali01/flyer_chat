@@ -10,6 +10,8 @@ import '../../models/user_model.dart';
 import '../../services/media_service.dart';
 import 'widgets/media_preview.dart';
 import 'widgets/message_input.dart';
+import 'package:agora_rtc_engine/agora_rtc_engine.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'widgets/message_bubble.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -201,7 +203,31 @@ class _ChatScreenState extends State<ChatScreen> {
             IconButton(
               icon: const Icon(Icons.call),
               onPressed: () {
-                // TODO: Implement voice call
+                final channelName = getChannelName(widget.currentUser.uid, widget.otherUser.uid);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => CallScreen(
+                      isVideo: false,
+                      channelName: channelName,
+                    ),
+                  ),
+                );
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.videocam),
+              onPressed: () {
+                final channelName = getChannelName(widget.currentUser.uid, widget.otherUser.uid);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => CallScreen(
+                      isVideo: true,
+                      channelName: channelName,
+                    ),
+                  ),
+                );
               },
             ),
           ],
@@ -332,4 +358,102 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
+}
+
+const String appId = '42da22b9df1649c386f7c40b5a5025dc'; // Replace with your App ID
+const String? token = null; // For dev, null is fine if token is not enabled
+
+class CallScreen extends StatefulWidget {
+  final bool isVideo;
+  final String channelName;
+
+  const CallScreen({Key? key, required this.channelName, this.isVideo = true}) : super(key: key);
+
+  @override
+  State<CallScreen> createState() => _CallScreenState();
+}
+
+class _CallScreenState extends State<CallScreen> {
+  int? _remoteUid;
+  late RtcEngine _engine;
+
+  @override
+  void initState() {
+    super.initState();
+    _initAgora();
+  }
+
+  Future<void> _initAgora() async {
+    await [Permission.microphone, if (widget.isVideo) Permission.camera].request();
+
+    _engine = createAgoraRtcEngine();
+    await _engine.initialize(RtcEngineContext(appId: appId));
+
+    _engine.registerEventHandler(
+      RtcEngineEventHandler(
+        onJoinChannelSuccess: (connection, elapsed) {
+          print('Local user joined');
+        },
+        onUserJoined: (connection, remoteUid, elapsed) {
+          setState(() {
+            _remoteUid = remoteUid;
+          });
+        },
+        onUserOffline: (connection, remoteUid, reason) {
+          setState(() {
+            _remoteUid = null;
+          });
+        },
+      ),
+    );
+
+    await _engine.enableAudio();
+    if (widget.isVideo) {
+      await _engine.enableVideo();
+    }
+
+    await _engine.joinChannel(
+      token: token ?? '',
+      channelId: widget.channelName,
+      uid: 0,
+      options: const ChannelMediaOptions(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _engine.leaveChannel();
+    _engine.release();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(widget.isVideo ? 'Video Call' : 'Audio Call')),
+      body: Center(
+        child: _remoteUid == null
+            ? const Text('Waiting for user to join...')
+            : widget.isVideo
+                ? AgoraVideoView(
+                    controller: VideoViewController.remote(
+                      rtcEngine: _engine,
+                      canvas: const VideoCanvas(uid: 1),
+                      connection: RtcConnection(channelId: widget.channelName),
+                    ),
+                  )
+                : const Text('Connected (audio only)'),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Icon(Icons.call_end),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+}
+
+String getChannelName(String uid1, String uid2) {
+  final ids = [uid1, uid2]..sort();
+  return ids.join('_');
 } 
