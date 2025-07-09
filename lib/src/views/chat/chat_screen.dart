@@ -39,17 +39,25 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _showEmoji = false;
   MessageModel? _replyTo;
 
+  // Typing indicator state
+  Timer? _typingTimer;
+  bool _isOtherTyping = false;
+
   @override
   void initState() {
     super.initState();
     _markMessagesAsRead();
     listenForIncomingCalls(context, widget.currentUser);
+    _messageController.addListener(_onTyping);
+    _listenToOtherTyping();
   }
 
   @override
   void dispose() {
+    _messageController.removeListener(_onTyping);
     _messageController.dispose();
     _scrollController.dispose();
+    _typingTimer?.cancel();
     super.dispose();
   }
 
@@ -110,6 +118,9 @@ class _ChatScreenState extends State<ChatScreen> {
       _messageController.clear();
       _replyTo = null;
       _scrollToBottom();
+      // Immediately set typing status to false when message is sent
+      _setTypingStatus(false);
+      _typingTimer?.cancel();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.toString())),
@@ -178,6 +189,40 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _onEmojiSelected(Emoji emoji) {
     _messageController.text += emoji.emoji;
+  }
+
+  void _onTyping() {
+    _setTypingStatus(true);
+    _typingTimer?.cancel();
+    _typingTimer = Timer(const Duration(seconds: 2), () {
+      _setTypingStatus(false);
+    });
+  }
+
+  void _setTypingStatus(bool isTyping) async {
+    final chatId = _getChatId();
+    final typingField = 'typingStatus.${widget.currentUser.uid}';
+    await FirebaseFirestore.instance.collection('chats').doc(chatId).set({
+      'typingStatus': {widget.currentUser.uid: isTyping}
+    }, SetOptions(merge: true));
+  }
+
+  void _listenToOtherTyping() {
+    final chatId = _getChatId();
+    FirebaseFirestore.instance.collection('chats').doc(chatId).snapshots().listen((doc) {
+      final data = doc.data();
+      if (data != null && data['typingStatus'] != null) {
+        final typingStatus = Map<String, dynamic>.from(data['typingStatus']);
+        final otherUid = widget.otherUser.uid;
+        setState(() {
+          _isOtherTyping = typingStatus[otherUid] == true;
+        });
+      } else {
+        setState(() {
+          _isOtherTyping = false;
+        });
+      }
+    });
   }
 
   @override
@@ -251,7 +296,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
                     return Center(
-                      child: Text('Error: ${snapshot.error}'),
+                      child: Text('Error:  ${snapshot.error}'),
                     );
                   }
 
@@ -265,6 +310,8 @@ class _ChatScreenState extends State<ChatScreen> {
                       .map((doc) =>
                           MessageModel.fromMap(doc.data() as Map<String, dynamic>))
                       .toList();
+                  // Build a map for reply-to lookup
+                  final allMessages = {for (var m in messages) m.id: m};
 
                   if (messages.isEmpty) {
                     return const Center(
@@ -284,12 +331,24 @@ class _ChatScreenState extends State<ChatScreen> {
                         message: message,
                         isMe: isMe,
                         onReply: () => setState(() => _replyTo = message),
+                        allMessages: allMessages,
                       );
                     },
                   );
                 },
               ),
             ),
+            if (_isOtherTyping)
+              Padding(
+                padding: const EdgeInsets.only(left: 16, bottom: 8),
+                child: Row(
+                  children: [
+                    TypingBubble(),
+                    const SizedBox(width: 8),
+                    Text('${widget.otherUser.displayName} is typing...'),
+                  ],
+                ),
+              ),
             MessageInput(
               controller: _messageController,
               isLoading: _isLoading,
@@ -331,6 +390,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 );
               },
               onEmojiPressed: _toggleEmojiPicker,
+              onChanged: (_) => _onTyping(),
             ),
             if (_showEmoji)
               SizedBox(
@@ -568,4 +628,90 @@ void listenForIncomingCalls(BuildContext context, UserModel currentUser) {
       );
     }
   });
+} 
+
+class TypingBubble extends StatefulWidget {
+  @override
+  State<TypingBubble> createState() => _TypingBubbleState();
+}
+
+class _TypingBubbleState extends State<TypingBubble> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _dot1Anim;
+  late Animation<double> _dot2Anim;
+  late Animation<double> _dot3Anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+    _dot1Anim = Tween<double>(begin: 0, end: -6).animate(
+      CurvedAnimation(parent: _controller, curve: const Interval(0.0, 0.4, curve: Curves.easeInOut)),
+    );
+    _dot2Anim = Tween<double>(begin: 0, end: -6).animate(
+      CurvedAnimation(parent: _controller, curve: const Interval(0.2, 0.6, curve: Curves.easeInOut)),
+    );
+    _dot3Anim = Tween<double>(begin: 0, end: -6).animate(
+      CurvedAnimation(parent: _controller, curve: const Interval(0.4, 1.0, curve: Curves.easeInOut)),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 36,
+      height: 20,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          AnimatedBuilder(
+            animation: _controller,
+            builder: (context, child) => Transform.translate(
+              offset: Offset(0, _dot1Anim.value),
+              child: child,
+            ),
+            child: _buildDot(context),
+          ),
+          const SizedBox(width: 4),
+          AnimatedBuilder(
+            animation: _controller,
+            builder: (context, child) => Transform.translate(
+              offset: Offset(0, _dot2Anim.value),
+              child: child,
+            ),
+            child: _buildDot(context),
+          ),
+          const SizedBox(width: 4),
+          AnimatedBuilder(
+            animation: _controller,
+            builder: (context, child) => Transform.translate(
+              offset: Offset(0, _dot3Anim.value),
+              child: child,
+            ),
+            child: _buildDot(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDot(BuildContext context) {
+    return Container(
+      width: 8,
+      height: 8,
+      decoration: BoxDecoration(
+        color: Colors.grey[600],
+        shape: BoxShape.circle,
+      ),
+    );
+  }
 } 

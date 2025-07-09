@@ -103,33 +103,49 @@ class _ChatListScreenState extends State<ChatListScreen> {
                   // Robust online status: only show online if lastSeen is recent
                   final now = DateTime.now();
                   final isRecentlyOnline = user.isOnline && now.difference(user.lastSeen).inSeconds < 30;
-                  return ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: Theme.of(context).primaryColor,
-                      child: Text(
-                        user.displayName[0].toUpperCase(),
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                    ),
-                    title: Text(user.displayName),
-                    subtitle: Text(subtitle),
-                    trailing: Container(
-                      width: 12,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: isRecentlyOnline ? Colors.green : Colors.grey,
-                      ),
-                    ),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => ChatScreen(
-                            currentUser: currentUser,
-                            otherUser: user,
+                  return StreamBuilder<DocumentSnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('chats')
+                        .doc(chatDocId)
+                        .snapshots(),
+                    builder: (context, typingSnap) {
+                      bool isTyping = false;
+                      if (typingSnap.hasData && typingSnap.data!.data() != null) {
+                        final data = typingSnap.data!.data() as Map<String, dynamic>;
+                        if (data['typingStatus'] != null) {
+                          final typingStatus = Map<String, dynamic>.from(data['typingStatus']);
+                          isTyping = typingStatus[user.uid] == true;
+                        }
+                      }
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: Theme.of(context).primaryColor,
+                          child: Text(
+                            user.displayName[0].toUpperCase(),
+                            style: const TextStyle(color: Colors.white),
                           ),
                         ),
+                        title: Text(user.displayName),
+                        subtitle: Text(isTyping ? 'Typing...' : subtitle),
+                        trailing: Container(
+                          width: 12,
+                          height: 12,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: isRecentlyOnline ? Colors.green : Colors.grey,
+                          ),
+                        ),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ChatScreen(
+                                currentUser: currentUser,
+                                otherUser: user,
+                              ),
+                            ),
+                          );
+                        },
                       );
                     },
                   );

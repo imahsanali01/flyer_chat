@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 
-class MessageInput extends StatelessWidget {
+class MessageInput extends StatefulWidget {
   final TextEditingController controller;
   final bool isLoading;
   final VoidCallback onSendMessage;
   final VoidCallback onAttachmentPressed;
   final VoidCallback onEmojiPressed;
+  final ValueChanged<String>? onChanged;
 
   const MessageInput({
     super.key,
@@ -14,8 +15,14 @@ class MessageInput extends StatelessWidget {
     required this.onSendMessage,
     required this.onAttachmentPressed,
     required this.onEmojiPressed,
+    this.onChanged,
   });
 
+  @override
+  State<MessageInput> createState() => _MessageInputState();
+}
+
+class _MessageInputState extends State<MessageInput> {
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -38,15 +45,15 @@ class MessageInput extends StatelessWidget {
           children: [
             IconButton(
               icon: const Icon(Icons.emoji_emotions_outlined),
-              onPressed: onEmojiPressed,
+              onPressed: widget.onEmojiPressed,
             ),
             IconButton(
               icon: const Icon(Icons.attach_file),
-              onPressed: onAttachmentPressed,
+              onPressed: widget.onAttachmentPressed,
             ),
             Expanded(
               child: TextField(
-                controller: controller,
+                controller: widget.controller,
                 decoration: const InputDecoration(
                   hintText: 'Type a message...',
                   border: InputBorder.none,
@@ -58,18 +65,19 @@ class MessageInput extends StatelessWidget {
                 maxLines: null,
                 textCapitalization: TextCapitalization.sentences,
                 textInputAction: TextInputAction.send,
-                onSubmitted: (_) => onSendMessage(),
+                onSubmitted: (_) => widget.onSendMessage(),
+                onChanged: widget.onChanged,
               ),
             ),
             IconButton(
-              icon: isLoading
+              icon: widget.isLoading
                   ? const SizedBox(
                       width: 24,
                       height: 24,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.send),
-              onPressed: isLoading ? null : onSendMessage,
+              onPressed: widget.isLoading ? null : widget.onSendMessage,
             ),
           ],
         ),
