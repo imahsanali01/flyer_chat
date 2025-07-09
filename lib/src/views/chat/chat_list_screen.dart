@@ -6,8 +6,24 @@ import '../../services/auth_service.dart';
 import '../../views/profile/settings_screen.dart';
 import 'chat_screen.dart';
 
-class ChatListScreen extends StatelessWidget {
+class ChatListScreen extends StatefulWidget {
   const ChatListScreen({super.key});
+
+  @override
+  State<ChatListScreen> createState() => _ChatListScreenState();
+}
+
+class _ChatListScreenState extends State<ChatListScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final currentUser = context.read<AuthService>().currentUser;
+      if (currentUser != null) {
+        listenForIncomingCalls(context, currentUser);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

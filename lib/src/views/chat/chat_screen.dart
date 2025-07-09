@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
@@ -13,6 +15,7 @@ import 'widgets/message_input.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'widgets/message_bubble.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 class ChatScreen extends StatefulWidget {
   final UserModel currentUser;
@@ -40,6 +43,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _markMessagesAsRead();
+    listenForIncomingCalls(context, widget.currentUser);
   }
 
   @override
@@ -203,31 +207,13 @@ class _ChatScreenState extends State<ChatScreen> {
             IconButton(
               icon: const Icon(Icons.call),
               onPressed: () {
-                final channelName = getChannelName(widget.currentUser.uid, widget.otherUser.uid);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => CallScreen(
-                      isVideo: false,
-                      channelName: channelName,
-                    ),
-                  ),
-                );
+                startCall(context, widget.currentUser, widget.otherUser, false);
               },
             ),
             IconButton(
               icon: const Icon(Icons.videocam),
               onPressed: () {
-                final channelName = getChannelName(widget.currentUser.uid, widget.otherUser.uid);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => CallScreen(
-                      isVideo: true,
-                      channelName: channelName,
-                    ),
-                  ),
-                );
+                startCall(context, widget.currentUser, widget.otherUser, true);
               },
             ),
           ],
@@ -366,8 +352,9 @@ const String? token = null; // For dev, null is fine if token is not enabled
 class CallScreen extends StatefulWidget {
   final bool isVideo;
   final String channelName;
+  final bool isCaller;
 
-  const CallScreen({Key? key, required this.channelName, this.isVideo = true}) : super(key: key);
+  const CallScreen({Key? key, required this.channelName, this.isVideo = true, this.isCaller = false}) : super(key: key);
 
   @override
   State<CallScreen> createState() => _CallScreenState();
@@ -376,11 +363,35 @@ class CallScreen extends StatefulWidget {
 class _CallScreenState extends State<CallScreen> {
   int? _remoteUid;
   late RtcEngine _engine;
+  StreamSubscription<DocumentSnapshot>? _callStatusSub;
+  AudioPlayer? _ringPlayer;
+  bool _callEnded = false;
 
   @override
   void initState() {
     super.initState();
     _initAgora();
+    if (widget.isCaller) {
+      _playRingback();
+      _callStatusSub = FirebaseFirestore.instance
+          .collection('calls')
+          .doc(widget.channelName)
+          .snapshots()
+          .listen((doc) {
+        final data = doc.data();
+        if (data == null) return;
+        if (data['status'] == 'accepted') {
+          _stopRingback();
+        } else if (data['status'] == 'declined') {
+          _stopRingback();
+          _endCallAndCleanup();
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Call declined')),
+          );
+        }
+      });
+    }
   }
 
   Future<void> _initAgora() async {
@@ -420,10 +431,35 @@ class _CallScreenState extends State<CallScreen> {
     );
   }
 
+  Future<void> _playRingback() async {
+    _ringPlayer = AudioPlayer();
+    await _ringPlayer!.play(AssetSource('ring.mp3'), volume: 1.0,);
+  }
+
+  void _stopRingback() {
+    _ringPlayer?.stop();
+    _ringPlayer?.dispose();
+    _ringPlayer = null;
+  }
+
+  Future<void> _endCallAndCleanup() async {
+    if (_callEnded) return;
+    _callEnded = true;
+    final callDoc = FirebaseFirestore.instance.collection('calls').doc(widget.channelName);
+    await callDoc.update({'status': 'ended'});
+    // Delete after short delay to allow both clients to process
+    Future.delayed(const Duration(seconds: 5), () async {
+      await callDoc.delete();
+    });
+  }
+
   @override
   void dispose() {
+    _callStatusSub?.cancel();
+    _stopRingback();
     _engine.leaveChannel();
     _engine.release();
+    _endCallAndCleanup();
     super.dispose();
   }
 
@@ -456,4 +492,80 @@ class _CallScreenState extends State<CallScreen> {
 String getChannelName(String uid1, String uid2) {
   final ids = [uid1, uid2]..sort();
   return ids.join('_');
+}
+
+Future<void> startCall(BuildContext context, UserModel caller, UserModel callee, bool isVideo) async {
+  final channelName = getChannelName(caller.uid, callee.uid);
+  final callDoc = FirebaseFirestore.instance.collection('calls').doc(channelName);
+  await callDoc.set({
+    'callerId': caller.uid,
+    'callerName': caller.displayName,
+    'calleeId': callee.uid,
+    'calleeName': callee.displayName,
+    'isVideo': isVideo,
+    'status': 'ringing',
+    'timestamp': FieldValue.serverTimestamp(),
+  });
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => CallScreen(
+        isVideo: isVideo,
+        channelName: channelName,
+        isCaller: true,
+      ),
+    ),
+  );
+}
+
+void listenForIncomingCalls(BuildContext context, UserModel currentUser) {
+  FirebaseFirestore.instance
+      .collection('calls')
+      .where('calleeId', isEqualTo: currentUser.uid)
+      .where('status', isEqualTo: 'ringing')
+      .snapshots()
+      .listen((snapshot) {
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      final channelName = doc.id;
+      final isVideo = data['isVideo'] ?? true;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: Text('Incoming ${isVideo ? 'Video' : 'Audio'} Call'),
+          content: Text('From: ${data['callerName']}'),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await doc.reference.update({'status': 'declined'});
+                Future.delayed(const Duration(seconds: 5), () async {
+                  await doc.reference.delete();
+                });
+                Navigator.pop(context);
+              },
+              child: const Text('Decline'),
+            ),
+            TextButton(
+              onPressed: () async {
+                await doc.reference.update({'status': 'accepted'});
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => CallScreen(
+                      isVideo: isVideo,
+                      channelName: channelName,
+                      isCaller: false,
+                    ),
+                  ),
+                );
+              },
+              child: const Text('Accept'),
+            ),
+          ],
+        ),
+      );
+    }
+  });
 } 
