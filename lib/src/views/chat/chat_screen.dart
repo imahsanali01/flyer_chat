@@ -16,7 +16,10 @@ import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'widgets/message_bubble.dart';
 import 'package:audioplayers/audioplayers.dart';
-
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
+//app certificate secondary
+// e212492ef48b47ae9dc5508d28d6c806
 class ChatScreen extends StatefulWidget {
   final UserModel currentUser;
   final UserModel otherUser;
@@ -38,10 +41,12 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isLoading = false;
   bool _showEmoji = false;
   MessageModel? _replyTo;
+  bool _showScrollToBottom = false;
 
   // Typing indicator state
   Timer? _typingTimer;
   bool _isOtherTyping = false;
+  StreamSubscription<DocumentSnapshot>? _typingSubscription;
 
   @override
   void initState() {
@@ -50,6 +55,13 @@ class _ChatScreenState extends State<ChatScreen> {
     listenForIncomingCalls(context, widget.currentUser);
     _messageController.addListener(_onTyping);
     _listenToOtherTyping();
+    _scrollController.addListener(_onScroll);
+    // Scroll to bottom after messages are loaded
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 100), () {
+        _scrollToBottom();
+      });
+    });
   }
 
   @override
@@ -58,7 +70,21 @@ class _ChatScreenState extends State<ChatScreen> {
     _messageController.dispose();
     _scrollController.dispose();
     _typingTimer?.cancel();
+    _typingSubscription?.cancel();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.hasClients) {
+      final maxScroll = _scrollController.position.maxScrollExtent;
+      final currentScroll = _scrollController.position.pixels;
+      final shouldShow = maxScroll - currentScroll > 200;
+      if (shouldShow != _showScrollToBottom) {
+        setState(() {
+          _showScrollToBottom = shouldShow;
+        });
+      }
+    }
   }
 
   String _getChatId() {
@@ -209,18 +235,22 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _listenToOtherTyping() {
     final chatId = _getChatId();
-    FirebaseFirestore.instance.collection('chats').doc(chatId).snapshots().listen((doc) {
+    _typingSubscription = FirebaseFirestore.instance.collection('chats').doc(chatId).snapshots().listen((doc) {
       final data = doc.data();
       if (data != null && data['typingStatus'] != null) {
         final typingStatus = Map<String, dynamic>.from(data['typingStatus']);
         final otherUid = widget.otherUser.uid;
-        setState(() {
-          _isOtherTyping = typingStatus[otherUid] == true;
-        });
+        if (mounted) {
+          setState(() {
+            _isOtherTyping = typingStatus[otherUid] == true;
+          });
+        }
       } else {
-        setState(() {
-          _isOtherTyping = false;
-        });
+        if (mounted) {
+          setState(() {
+            _isOtherTyping = false;
+          });
+        }
       }
     });
   }
@@ -234,17 +264,46 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       },
       child: Scaffold(
-        appBar: AppBar(
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(widget.otherUser.displayName),
-              Text(
-                widget.otherUser.isOnline ? 'Online' : 'Offline',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: widget.otherUser.isOnline ? Colors.green : Colors.grey,
+        floatingActionButton: _showScrollToBottom
+            ? Padding(
+                padding: const EdgeInsets.only(bottom: 80.0, left: 16.0),
+                child: FloatingActionButton(
+                  mini: true,
+                  backgroundColor: Theme.of(context).primaryColor,
+                  child: const Icon(Icons.keyboard_arrow_down, color: Colors.white),
+                  onPressed: _scrollToBottom,
                 ),
+              )
+            : null,
+        floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
+        appBar: AppBar(
+          title: Row(
+            children: [
+              CircleAvatar(
+                radius: 18,
+                backgroundColor: Theme.of(context).brightness == Brightness.light
+                    ? Theme.of(context).colorScheme.primary.withOpacity(0.15)
+                    : Colors.grey[700],
+                backgroundImage: (widget.otherUser.photoURL != null && widget.otherUser.photoURL!.isNotEmpty)
+                    ? NetworkImage(widget.otherUser.photoURL!)
+                    : null,
+                child: (widget.otherUser.photoURL == null || widget.otherUser.photoURL!.isEmpty)
+                    ? Text((widget.otherUser.displayName != null && widget.otherUser.displayName!.isNotEmpty) ? widget.otherUser.displayName![0].toUpperCase() : '', style: const TextStyle(fontSize: 18, color: Colors.white))
+                    : null,
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(widget.otherUser.displayName, style: const TextStyle(fontSize: 18)),
+                  Text(
+                    widget.otherUser.isOnline ? 'Online' : 'Offline',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: widget.otherUser.isOnline ? Colors.green : Colors.grey,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -268,7 +327,9 @@ class _ChatScreenState extends State<ChatScreen> {
             if (_replyTo != null)
               Container(
                 padding: const EdgeInsets.all(8),
-                color: Colors.grey[200],
+                color: Theme.of(context).brightness == Brightness.dark 
+                    ? Colors.grey[800] 
+                    : Colors.grey[200],
                 child: Row(
                   children: [
                     Expanded(
@@ -276,10 +337,18 @@ class _ChatScreenState extends State<ChatScreen> {
                         'Replying to: ${_replyTo!.content}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Theme.of(context).brightness == Brightness.dark 
+                              ? Colors.white 
+                              : Colors.black,
+                        ),
                       ),
                     ),
                     IconButton(
                       icon: const Icon(Icons.close),
+                      color: Theme.of(context).brightness == Brightness.dark 
+                          ? Colors.white 
+                          : Colors.black,
                       onPressed: () => setState(() => _replyTo = null),
                     ),
                   ],
@@ -313,11 +382,34 @@ class _ChatScreenState extends State<ChatScreen> {
                   // Build a map for reply-to lookup
                   final allMessages = {for (var m in messages) m.id: m};
 
+                  // Mark messages as read when messages are loaded
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    _markMessagesAsRead();
+                  });
+
                   if (messages.isEmpty) {
                     return const Center(
                       child: Text('No messages yet'),
                     );
                   }
+
+                  // Scroll to bottom when messages are first loaded
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (_scrollController.hasClients && !_showScrollToBottom) {
+                      _scrollToBottom();
+                    }
+                  });
+
+                  // Scroll to bottom when a new message arrives, but only if user is near the bottom
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (_scrollController.hasClients) {
+                      final maxScroll = _scrollController.position.maxScrollExtent;
+                      final currentScroll = _scrollController.position.pixels;
+                      if (maxScroll - currentScroll < 200) {
+                        _scrollToBottom();
+                      }
+                    }
+                  });
 
                   return ListView.builder(
                     controller: _scrollController,
@@ -326,12 +418,84 @@ class _ChatScreenState extends State<ChatScreen> {
                     itemBuilder: (context, index) {
                       final message = messages[index];
                       final isMe = message.senderId == widget.currentUser.uid;
+                      final previousMessage = index > 0 ? messages[index - 1] : null;
 
                       return MessageBubble(
                         message: message,
                         isMe: isMe,
-                        onReply: () => setState(() => _replyTo = message),
+                        // onReply is now also used for edit/delete
+                        onReply: (String? messageId, [bool? isEdit]) async {
+                          if (messageId != null && isEdit != null) {
+                            if (isEdit) {
+                              // Edit message logic
+                              final msg = messages.firstWhere((m) => m.id == messageId);
+                              final now = DateTime.now();
+                              if (now.difference(msg.timestamp).inMinutes < 15 && !msg.isDeleted) {
+                                final controller = TextEditingController(text: msg.content);
+                                final result = await showDialog<String>(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    title: const Text('Edit Message'),
+                                    content: TextField(
+                                      controller: controller,
+                                      maxLines: null,
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        child: const Text('Cancel'),
+                                      ),
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context, controller.text.trim()),
+                                        child: const Text('Save'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                if (result != null && result.isNotEmpty && result != msg.content) {
+                                  await FirebaseFirestore.instance
+                                    .collection('chats')
+                                    .doc(_getChatId())
+                                    .collection('messages')
+                                    .doc(msg.id)
+                                    .update({
+                                      'content': result,
+                                      'isEdited': true,
+                                      'editedAt': Timestamp.fromDate(DateTime.now()),
+                                    });
+                                }
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('You can only edit messages within 15 minutes of sending.')),
+                                );
+                              }
+                            } else {
+                              // Delete message logic
+                              final msg = messages.firstWhere((m) => m.id == messageId);
+                              if (!msg.isDeleted) {
+                                await FirebaseFirestore.instance
+                                  .collection('chats')
+                                  .doc(_getChatId())
+                                  .collection('messages')
+                                  .doc(msg.id)
+                                  .update({
+                                    'isDeleted': true,
+                                    'originalContent': msg.content,
+                                    'content': '',
+                                  });
+                              }
+                            }
+                          } else if (messageId != null && isEdit == null) {
+                            // Reply logic - messageId is provided but isEdit is null
+                            final msg = messages.firstWhere((m) => m.id == messageId);
+                            setState(() => _replyTo = msg);
+                          } else if (messageId == null) {
+                            setState(() => _replyTo = message);
+                          }
+                        },
                         allMessages: allMessages,
+                        otherUserName: widget.otherUser.displayName,
+                        previousMessage: previousMessage,
                       );
                     },
                   );
@@ -407,14 +571,23 @@ class _ChatScreenState extends State<ChatScreen> {
 }
 
 const String appId = '42da22b9df1649c386f7c40b5a5025dc'; // Replace with your App ID
-const String? token = null; // For dev, null is fine if token is not enabled
-
+const String? token = '007eJxTYFBOaP+pmeG/fdqXu7prPpnZFxzQEk6/Y/h05Rqnovs7WQQUGEyMUhKNjJIsU9IMzUwsk40tzNLMk00MkkwTTQ2MTFOSf2/Oy2gIZGQ49OAQIyMDBIL4nAwlqbkFIfnZqXkMDAAv/SMJ'; // For dev, null is fine if token is not enabled
+//tempToken
 class CallScreen extends StatefulWidget {
   final bool isVideo;
   final String channelName;
   final bool isCaller;
+  final UserModel currentUser;
+  final UserModel otherUser;
 
-  const CallScreen({Key? key, required this.channelName, this.isVideo = true, this.isCaller = false}) : super(key: key);
+  const CallScreen({
+    Key? key,
+    required this.channelName,
+    this.isVideo = true,
+    this.isCaller = false,
+    required this.currentUser,
+    required this.otherUser,
+  }) : super(key: key);
 
   @override
   State<CallScreen> createState() => _CallScreenState();
@@ -426,12 +599,22 @@ class _CallScreenState extends State<CallScreen> {
   StreamSubscription<DocumentSnapshot>? _callStatusSub;
   AudioPlayer? _ringPlayer;
   bool _callEnded = false;
+  String _callState = 'Connecting';
+  bool _muted = false;
+  bool _speakerOn = false;
+  bool _localVideoSmall = true;
+  Timer? _callTimer;
+  int _callDuration = 0;
+  bool _reconnecting = false;
+  bool _showSwitchType = false;
+  bool _wasInCall = false; // Track if call was ever 'In Call'
 
   @override
   void initState() {
     super.initState();
     _initAgora();
     if (widget.isCaller) {
+      _callState = 'Ringing';
       _playRingback();
       _callStatusSub = FirebaseFirestore.instance
           .collection('calls')
@@ -439,13 +622,42 @@ class _CallScreenState extends State<CallScreen> {
           .snapshots()
           .listen((doc) {
         final data = doc.data();
-        if (data == null) return;
+        if (data == null) {
+          if (mounted) Navigator.pop(context);
+          return;
+        }
         if (data['status'] == 'accepted') {
           _stopRingback();
-        } else if (data['status'] == 'declined') {
+          setState(() {
+            _callState = 'Connecting'; // Wait for both users to join
+            _reconnecting = false;
+          });
+        } else if (data['status'] == 'declined' || data['status'] == 'ended') {
           _stopRingback();
           _endCallAndCleanup();
-          Navigator.pop(context);
+          if (mounted) Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(data['status'] == 'declined' ? 'Call declined' : 'Call ended')),
+          );
+        }
+      });
+    } else {
+      _callState = 'Connecting';
+      _callStatusSub = FirebaseFirestore.instance
+          .collection('calls')
+          .doc(widget.channelName)
+          .snapshots()
+          .listen((doc) {
+        final data = doc.data();
+        if (data == null || data['status'] == 'ended') {
+          if (mounted) Navigator.pop(context);
+        } else if (data['status'] == 'accepted') {
+          setState(() {
+            _callState = 'Connecting'; // Wait for both users to join
+            _reconnecting = false;
+          });
+        } else if (data['status'] == 'declined') {
+          if (mounted) Navigator.pop(context);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Call declined')),
           );
@@ -454,26 +666,118 @@ class _CallScreenState extends State<CallScreen> {
     }
   }
 
+  void _startCallTimer() {
+    _callTimer?.cancel();
+    _callDuration = 0;
+    _callTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      setState(() {
+        _callDuration++;
+      });
+    });
+  }
+
+  String _formatDuration(int seconds) {
+    final m = (seconds ~/ 60).toString().padLeft(2, '0');
+    final s = (seconds % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  int _getAgoraUid(String uid) {
+    // Use a hash of the Firebase UID, mod 2^31-1 (Agora UID must be int)
+    return md5.convert(utf8.encode(uid)).bytes.fold(0, (a, b) => a * 256 + b) % 2147483647;
+  }
+
   Future<void> _initAgora() async {
     await [Permission.microphone, if (widget.isVideo) Permission.camera].request();
 
     _engine = createAgoraRtcEngine();
     await _engine.initialize(RtcEngineContext(appId: appId));
 
+    final localAgoraUid = _getAgoraUid(widget.currentUser.uid);
+    print('[DEBUG] App ID: $appId');
+    print('[DEBUG] Channel: ${widget.channelName}');
+    print('[DEBUG] UID: $localAgoraUid');
+    print('[DEBUG] Token:  [31m${(token ?? '').substring(0, 10)}...');
+    print('[DEBUG] Is Video: ${widget.isVideo}');
+
     _engine.registerEventHandler(
       RtcEngineEventHandler(
         onJoinChannelSuccess: (connection, elapsed) {
-          print('Local user joined');
+          print('[DEBUG] Local user joined Agora channel: channel=${connection.channelId}, uid=${connection.localUid}, elapsed=$elapsed');
+          setState(() {
+            _callState = _remoteUid != null ? 'In Call' : 'Connecting';
+            _reconnecting = false;
+          });
+          if (_remoteUid != null) {
+            _wasInCall = true;
+            _startCallTimer();
+            _stopRingback();
+          }
         },
         onUserJoined: (connection, remoteUid, elapsed) {
+          print('[DEBUG] Remote user joined Agora channel: remoteUid=$remoteUid, channel=${connection.channelId}, elapsed=$elapsed');
           setState(() {
             _remoteUid = remoteUid;
+            _callState = 'In Call';
+            _reconnecting = false;
           });
+          _wasInCall = true;
+          _startCallTimer();
+          _stopRingback();
         },
         onUserOffline: (connection, remoteUid, reason) {
+          print('[DEBUG] Remote user left Agora channel: remoteUid=$remoteUid, reason=$reason');
           setState(() {
             _remoteUid = null;
+            if (_wasInCall) {
+              _callState = 'Reconnecting';
+              _reconnecting = true;
+            } else {
+              _callState = 'Connecting';
+              _reconnecting = false;
+            }
           });
+        },
+        onConnectionLost: (connection) {
+          print('[DEBUG] Agora connection lost: channel=${connection.channelId}');
+          setState(() {
+            if (_wasInCall) {
+              _callState = 'Reconnecting';
+              _reconnecting = true;
+            } else {
+              _callState = 'Connecting';
+              _reconnecting = false;
+            }
+          });
+        },
+        onConnectionStateChanged: (connection, state, reason) {
+          print('[DEBUG] Agora connection state changed: $state, reason=$reason, channel=${connection.channelId}');
+          if (state == ConnectionStateType.connectionStateFailed) {
+            setState(() {
+              if (_wasInCall) {
+                _callState = 'Reconnecting';
+                _reconnecting = true;
+              } else {
+                _callState = 'Connecting';
+                _reconnecting = false;
+              }
+            });
+            _stopRingback();
+          } else if (state == ConnectionStateType.connectionStateConnected) {
+            setState(() {
+              _callState = _remoteUid != null ? 'In Call' : 'Connecting';
+              _reconnecting = false;
+            });
+            if (_remoteUid != null) {
+              _wasInCall = true;
+              _startCallTimer();
+              _stopRingback();
+            }
+          }
+        },
+        onError: (err, msg) {
+          print('[DEBUG][ERROR] Agora error: $err, message: $msg');
+          _stopRingback();
         },
       ),
     );
@@ -481,13 +785,22 @@ class _CallScreenState extends State<CallScreen> {
     await _engine.enableAudio();
     if (widget.isVideo) {
       await _engine.enableVideo();
+      setState(() => _showSwitchType = true);
+    } else {
+      setState(() => _showSwitchType = true);
     }
 
     await _engine.joinChannel(
       token: token ?? '',
       channelId: widget.channelName,
-      uid: 0,
+      uid: localAgoraUid,
       options: const ChannelMediaOptions(),
+    );
+  }
+
+  Future<void> _switchCallType() async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Switching call type is not implemented.')),
     );
   }
 
@@ -505,12 +818,27 @@ class _CallScreenState extends State<CallScreen> {
   Future<void> _endCallAndCleanup() async {
     if (_callEnded) return;
     _callEnded = true;
+    _callTimer?.cancel();
     final callDoc = FirebaseFirestore.instance.collection('calls').doc(widget.channelName);
-    await callDoc.update({'status': 'ended'});
-    // Delete after short delay to allow both clients to process
-    Future.delayed(const Duration(seconds: 5), () async {
-      await callDoc.delete();
-    });
+    try {
+      final docSnap = await callDoc.get();
+      if (docSnap.exists) {
+        await callDoc.update({'status': 'ended'});
+        // Delete after short delay to allow both clients to process
+        Future.delayed(const Duration(seconds: 5), () async {
+          try {
+            final docSnap2 = await callDoc.get();
+            if (docSnap2.exists) {
+              await callDoc.delete();
+            }
+          } catch (e) {
+            // Ignore not-found
+          }
+        });
+      }
+    } catch (e) {
+      // Ignore not-found
+    }
   }
 
   @override
@@ -520,31 +848,149 @@ class _CallScreenState extends State<CallScreen> {
     _engine.leaveChannel();
     _engine.release();
     _endCallAndCleanup();
+    _callTimer?.cancel();
     super.dispose();
+  }
+
+  void _toggleMute() async {
+    setState(() => _muted = !_muted);
+    await _engine.muteLocalAudioStream(_muted);
+  }
+
+  void _toggleSpeaker() async {
+    setState(() => _speakerOn = !_speakerOn);
+    await _engine.setEnableSpeakerphone(_speakerOn);
+  }
+
+  void _switchCamera() async {
+    await _engine.switchCamera();
+    setState(() => _localVideoSmall = !_localVideoSmall);
+  }
+
+  Widget _buildAvatar() {
+    final user = widget.currentUser.uid == widget.otherUser.uid ? widget.currentUser : widget.otherUser;
+    final photo = user.photoURL;
+    return CircleAvatar(
+      radius: 48,
+      backgroundColor: Colors.grey[300],
+      backgroundImage: photo != null && photo.isNotEmpty ? NetworkImage(photo) : null,
+      child: (photo == null || photo.isEmpty)
+          ? Text(user.displayName[0].toUpperCase(), style: const TextStyle(fontSize: 40, color: Colors.white))
+          : null,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final otherUser = widget.currentUser.uid == widget.otherUser.uid ? widget.currentUser : widget.otherUser;
     return Scaffold(
       appBar: AppBar(title: Text(widget.isVideo ? 'Video Call' : 'Audio Call')),
-      body: Center(
-        child: _remoteUid == null
-            ? const Text('Waiting for user to join...')
-            : widget.isVideo
-                ? AgoraVideoView(
-                    controller: VideoViewController.remote(
-                      rtcEngine: _engine,
-                      canvas: const VideoCanvas(uid: 1),
-                      connection: RtcConnection(channelId: widget.channelName),
+      body: Stack(
+        children: [
+          if (widget.isVideo && _remoteUid != null)
+            Positioned.fill(
+              child: AgoraVideoView(
+                controller: VideoViewController.remote(
+                  rtcEngine: _engine,
+                  canvas: const VideoCanvas(uid: 1),
+                  connection: RtcConnection(channelId: widget.channelName),
+                ),
+              ),
+            ),
+          if (widget.isVideo)
+            Positioned(
+              top: 40,
+              right: 16,
+              child: SizedBox(
+                width: 100,
+                height: 150,
+                child: AgoraVideoView(
+                  controller: VideoViewController(
+                    rtcEngine: _engine,
+                    canvas: const VideoCanvas(uid: 0),
+                  ),
+                ),
+              ),
+            ),
+          if (!widget.isVideo || _remoteUid == null)
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _buildAvatar(),
+                  const SizedBox(height: 16),
+                  Text(otherUser.displayName, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Text(_callState, style: const TextStyle(fontSize: 18, color: Colors.grey)),
+                  if (_callState == 'In Call')
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0),
+                      child: Text(_formatDuration(_callDuration), style: const TextStyle(fontSize: 16, color: Colors.green)),
                     ),
-                  )
-                : const Text('Connected (audio only)'),
+                ],
+              ),
+            ),
+          // Call controls
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 40,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  icon: Icon(_muted ? Icons.mic_off : Icons.mic, color: Colors.white, size: 32),
+                  onPressed: _toggleMute,
+                  color: Colors.black54,
+                ),
+                const SizedBox(width: 32),
+                if (widget.isVideo)
+                  IconButton(
+                    icon: const Icon(Icons.cameraswitch, color: Colors.white, size: 32),
+                    onPressed: _switchCamera,
+                    color: Colors.black54,
+                  ),
+                if (widget.isVideo) const SizedBox(width: 32),
+                IconButton(
+                  icon: Icon(_speakerOn ? Icons.volume_up : Icons.volume_off, color: Colors.white, size: 32),
+                  onPressed: _toggleSpeaker,
+                  color: Colors.black54,
+                ),
+                const SizedBox(width: 32),
+                if (_showSwitchType)
+                  IconButton(
+                    icon: Icon(widget.isVideo ? Icons.call : Icons.videocam, color: Colors.white, size: 32),
+                    onPressed: _switchCallType,
+                    color: Colors.black54,
+                  ),
+                if (_showSwitchType) const SizedBox(width: 32),
+                FloatingActionButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Icon(Icons.call_end),
+                  backgroundColor: Colors.red,
+                ),
+              ],
+            ),
+          ),
+          if (_reconnecting && _wasInCall)
+            Positioned(
+              top: 80,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.7),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Text('Reconnecting...', style: TextStyle(color: Colors.white, fontSize: 16)),
+                ),
+              ),
+            ),
+        ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Icon(Icons.call_end),
-        backgroundColor: Colors.red,
-      ),
+      backgroundColor: Colors.black,
     );
   }
 }
@@ -560,8 +1006,10 @@ Future<void> startCall(BuildContext context, UserModel caller, UserModel callee,
   await callDoc.set({
     'callerId': caller.uid,
     'callerName': caller.displayName,
+    'callerPhoto': caller.photoURL,
     'calleeId': callee.uid,
     'calleeName': callee.displayName,
+    'calleePhoto': callee.photoURL,
     'isVideo': isVideo,
     'status': 'ringing',
     'timestamp': FieldValue.serverTimestamp(),
@@ -573,12 +1021,25 @@ Future<void> startCall(BuildContext context, UserModel caller, UserModel callee,
         isVideo: isVideo,
         channelName: channelName,
         isCaller: true,
+        currentUser: caller,
+        otherUser: callee,
       ),
     ),
   );
 }
 
 void listenForIncomingCalls(BuildContext context, UserModel currentUser) {
+  AudioPlayer? _calleeRingPlayer;
+  void _playCalleeRing() async {
+    _calleeRingPlayer = AudioPlayer();
+    await _calleeRingPlayer!.play(AssetSource('ring.mp3'), volume: 1.0);
+  }
+  void _stopCalleeRing() {
+    _calleeRingPlayer?.stop();
+    _calleeRingPlayer?.dispose();
+    _calleeRingPlayer = null;
+  }
+
   FirebaseFirestore.instance
       .collection('calls')
       .where('calleeId', isEqualTo: currentUser.uid)
@@ -589,6 +1050,17 @@ void listenForIncomingCalls(BuildContext context, UserModel currentUser) {
       final data = doc.data();
       final channelName = doc.id;
       final isVideo = data['isVideo'] ?? true;
+      print('[DEBUG] Incoming call doc: $channelName, status=${data['status']}');
+      // If call is ended or declined, pop dialog if open and stop ringtone
+      if (data['status'] == 'ended' || data['status'] == 'declined') {
+        _stopCalleeRing();
+        if (Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
+        continue;
+      }
+      // Show dialog and play ringtone if not already playing
+      _playCalleeRing();
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -600,8 +1072,16 @@ void listenForIncomingCalls(BuildContext context, UserModel currentUser) {
               onPressed: () async {
                 await doc.reference.update({'status': 'declined'});
                 Future.delayed(const Duration(seconds: 5), () async {
-                  await doc.reference.delete();
+                  try {
+                    final docSnap = await doc.reference.get();
+                    if (docSnap.exists) {
+                      await doc.reference.delete();
+                    }
+                  } catch (e) {
+                    // Ignore not-found
+                  }
                 });
+                _stopCalleeRing();
                 Navigator.pop(context);
               },
               child: const Text('Decline'),
@@ -609,6 +1089,7 @@ void listenForIncomingCalls(BuildContext context, UserModel currentUser) {
             TextButton(
               onPressed: () async {
                 await doc.reference.update({'status': 'accepted'});
+                _stopCalleeRing();
                 Navigator.pop(context);
                 Navigator.push(
                   context,
@@ -617,6 +1098,15 @@ void listenForIncomingCalls(BuildContext context, UserModel currentUser) {
                       isVideo: isVideo,
                       channelName: channelName,
                       isCaller: false,
+                      currentUser: currentUser,
+                      otherUser: UserModel(
+                        uid: data['callerId']!,
+                        displayName: data['callerName']!,
+                        photoURL: data['callerPhoto'] ?? '',
+                        isOnline: true,
+                        email: '',
+                        lastSeen: DateTime.now(),
+                      ),
                     ),
                   ),
                 );
@@ -625,7 +1115,9 @@ void listenForIncomingCalls(BuildContext context, UserModel currentUser) {
             ),
           ],
         ),
-      );
+      ).then((_) {
+        _stopCalleeRing();
+      });
     }
   });
 } 

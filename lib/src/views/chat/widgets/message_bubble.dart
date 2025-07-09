@@ -6,11 +6,13 @@ import 'package:timeago/timeago.dart' as timeago;
 import '../../../models/message_model.dart';
 import 'media_preview.dart';
 
-class MessageBubble extends StatelessWidget {
+class MessageBubble extends StatefulWidget {
   final MessageModel message;
   final bool isMe;
-  final VoidCallback onReply;
+  final Function(String?, [bool?]) onReply;
   final Map<String, MessageModel> allMessages;
+  final String? otherUserName;
+  final MessageModel? previousMessage;
 
   const MessageBubble({
     super.key,
@@ -18,18 +20,220 @@ class MessageBubble extends StatelessWidget {
     required this.isMe,
     required this.onReply,
     required this.allMessages,
+    this.otherUserName,
+    this.previousMessage,
   });
 
   @override
+  State<MessageBubble> createState() => _MessageBubbleState();
+}
+
+class _MessageBubbleState extends State<MessageBubble> with SingleTickerProviderStateMixin {
+  double _swipeOffset = 0;
+  bool _showReplyHighlight = false;
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 200));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _handleSwipeReply() {
+    setState(() {
+      _showReplyHighlight = true;
+      _swipeOffset = 32;
+    });
+    _controller.forward(from: 0);
+    Future.delayed(const Duration(milliseconds: 350), () {
+      setState(() {
+        _showReplyHighlight = false;
+        _swipeOffset = 0;
+      });
+    });
+    widget.onReply(widget.message.id);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final message = widget.message;
+    final isMe = widget.isMe;
+    final onReply = widget.onReply;
+    final allMessages = widget.allMessages;
     String? replyContent;
+    String? replySender;
     if (message.replyTo != null && allMessages[message.replyTo!] != null) {
       replyContent = allMessages[message.replyTo!]!.content;
+      replySender = allMessages[message.replyTo!]!.senderId == message.senderId
+          ? (isMe ? 'You' : 'Sender')
+          : (allMessages[message.replyTo!]!.senderId == (isMe ? message.receiverId : message.senderId)
+              ? 'Other'
+              : '');
     }
+
+    // Secret tap counter for recovery
+    final ValueNotifier<int> tapCount = ValueNotifier<int>(0);
+    final ValueNotifier<bool> showRecovered = ValueNotifier<bool>(false);
+
+    Widget messageContentWidget() {
+      if (message.isDeleted) {
+        return ValueListenableBuilder<bool>(
+          valueListenable: showRecovered,
+          builder: (context, recovered, _) {
+            if (recovered && message.originalContent != null) {
+              return Text(
+                message.originalContent!,
+                style: TextStyle(
+                  color: isMe ? Colors.white : Colors.black,
+                  fontStyle: FontStyle.italic,
+                  fontSize: 16,
+                ),
+              );
+            }
+            return Text(
+              'This message was deleted',
+              style: TextStyle(
+                color: Colors.grey,
+                fontStyle: FontStyle.italic,
+                fontSize: 16,
+              ),
+            );
+          },
+        );
+      } else {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (message.type != MessageType.text)
+              MediaPreview(message: message),
+            if (message.content.isNotEmpty)
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      message.content,
+                      style: TextStyle(
+                        color: isMe 
+                            ? Colors.white 
+                            : (Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black),
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                  if (message.isEdited)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4.0),
+                      child: Text(
+                        '(edited)',
+                        style: TextStyle(
+                          color: isMe ? Colors.white70 : Colors.black54,
+                          fontSize: 10,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            const SizedBox(height: 2),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  timeago.format(message.timestamp),
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: isMe 
+                        ? Colors.white70 
+                        : (Theme.of(context).brightness == Brightness.dark ? Colors.white70 : Colors.black54),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                if (isMe)
+                  Icon(
+                    message.isRead
+                        ? Icons.done_all
+                        : Icons.done,
+                    size: 12,
+                    color: message.isRead
+                        ? Colors.blue
+                        : Colors.white70,
+                  ),
+              ],
+            ),
+          ],
+        );
+      }
+    }
+
+    Widget replyPreview() {
+      if (message.replyTo != null && replyContent != null) {
+        return Container(
+          // No margin, so it's inside the bubble
+          padding: const EdgeInsets.only(top: 4, bottom: 4, left: 12, right: 0),
+          decoration: BoxDecoration(
+            color: Colors.transparent,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(10),
+              topRight: Radius.circular(10),
+            ),
+            border: Border(
+              left: BorderSide(
+                color: isMe ? Colors.blue : Colors.green,
+                width: 3,
+              ),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                allMessages[message.replyTo!]!.senderId == message.senderId
+                    ? (isMe ? 'You' : 'Sender')
+                    : (allMessages[message.replyTo!]!.senderId == (isMe ? message.receiverId : message.senderId)
+                        ? (widget.otherUserName ?? 'Other')
+                        : 'Other'),
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: isMe ? Colors.blue : Colors.green,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                replyContent!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13, 
+                  color: isMe 
+                      ? Colors.white70 
+                      : (Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black87),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Container(
+                height: 1,
+                color: (isMe ? Colors.white : (Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black12)).withOpacity(0.15),
+                margin: const EdgeInsets.only(top: 2, bottom: 2),
+              ),
+            ],
+          ),
+        );
+      }
+      return const SizedBox.shrink();
+    }
+
     return Padding(
       padding: EdgeInsets.only(
-        top: 4.0,
-        bottom: 4.0,
+        bottom: 1.0,
+        // Add extra top padding if previous message was from different sender
+        top: (widget.previousMessage != null && widget.previousMessage!.senderId != message.senderId) ? 8.0 : 1.0,
         left: isMe ? 48.0 : 8.0,
         right: isMe ? 8.0 : 48.0,
       ),
@@ -37,137 +241,166 @@ class MessageBubble extends StatelessWidget {
         crossAxisAlignment:
             isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
-          if (message.replyTo != null && replyContent != null)
-            Container(
-              margin: const EdgeInsets.only(bottom: 4),
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.grey[200],
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                'Reply to: $replyContent',
-                style: const TextStyle(fontSize: 12),
-              ),
-            ),
-          if (message.replyTo != null && replyContent == null)
-            Container(
-              margin: const EdgeInsets.only(bottom: 4),
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.grey[200],
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                'Reply to: (message not found)',
-                style: const TextStyle(fontSize: 12),
-              ),
-            ),
           Row(
             mainAxisAlignment:
                 isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              if (!isMe) ...[
-                const CircleAvatar(
-                  radius: 16,
-                  child: Icon(Icons.person),
-                ),
-                const SizedBox(width: 8),
-              ],
+              // Avatar removed for one-to-one chat
+              //     if (!isMe) ...[
+              //   const CircleAvatar(
+              //     radius: 16,
+              //     child: Icon(Icons.person),
+              //   ),
+              //   const SizedBox(width: 8),
+              // ],
               Flexible(
                 child: GestureDetector(
-                  onLongPress: onReply,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: isMe ? Theme.of(context).primaryColor : Colors.grey[200],
-                      borderRadius: BorderRadius.only(
-                        topLeft: const Radius.circular(18),
-                        topRight: const Radius.circular(18),
-                        bottomLeft: Radius.circular(isMe ? 18 : 0),
-                        bottomRight: Radius.circular(isMe ? 0 : 18),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.04),
-                          blurRadius: 2,
-                          offset: const Offset(0, 1),
+                  onLongPress: () async {
+                    final action = await showMenu<String>(
+                      context: context,
+                      position: RelativeRect.fromLTRB(100, 100, 100, 100),
+                      items: [
+                        const PopupMenuItem(
+                          value: 'reply',
+                          child: Text('Reply'),
                         ),
-                      ],
-                    ),
-                    child: Stack(
-                      children: [
-                        Padding(
-                          padding: EdgeInsets.only(
-                            left: 14.0,
-                            right: 14.0,
-                            top: 10.0,
-                            bottom: 18.0,
+                        if (isMe && !message.isDeleted)
+                          const PopupMenuItem(
+                            value: 'edit',
+                            child: Text('Edit'),
                           ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (message.type != MessageType.text)
-                                MediaPreview(message: message),
-                              if (message.content.isNotEmpty)
-                                Text(
-                                  message.content,
-                                  style: TextStyle(
-                                    color: isMe ? Colors.white : Colors.black,
-                                    fontSize: 16,
+                        if (isMe && !message.isDeleted)
+                          const PopupMenuItem(
+                            value: 'delete',
+                            child: Text('Delete'),
+                          ),
+                      ],
+                    );
+                    if (action == 'reply') {
+                      onReply(message.id);
+                    } else if (action == 'edit') {
+                      onReply(message.id, true);
+                    } else if (action == 'delete') {
+                      onReply(message.id, false);
+                    }
+                  },
+                  onHorizontalDragEnd: (details) {
+                    // WhatsApp-style swipe to reply
+                    if (details.primaryVelocity != null &&
+                        details.primaryVelocity!.abs() > 250) {
+                      _handleSwipeReply();
+                    }
+                  },
+                  onTap: () {
+                    if (message.isDeleted && isMe) {
+                      tapCount.value++;
+                      if (tapCount.value >= 15) {
+                        showRecovered.value = true;
+                      }
+                    }
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    transform: Matrix4.translationValues(_showReplyHighlight ? _swipeOffset : 0, 0, 0),
+                    curve: Curves.easeOut,
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final maxWidth = constraints.maxWidth * 0.65;
+                        return ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: maxWidth,
+                          ),
+                          child: Container(
+                            padding: const EdgeInsets.only(
+                              left: 12.0,
+                              right: 12.0,
+                              top: 10.0,
+                              bottom: 10.0,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isMe 
+                                  ? (Theme.of(context).brightness == Brightness.dark 
+                                      ? Colors.green[600] 
+                                      : Theme.of(context).primaryColor)
+                                  : (Theme.of(context).brightness == Brightness.dark ? Colors.grey[800] : Colors.grey[200]),
+                              borderRadius: BorderRadius.only(
+                                topLeft: const Radius.circular(18),
+                                topRight: const Radius.circular(18),
+                                bottomLeft: Radius.circular(isMe ? 18 : 0),
+                                bottomRight: Radius.circular(isMe ? 0 : 18),
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.04),
+                                  blurRadius: 2,
+                                  offset: const Offset(0, 1),
+                                ),
+                              ],
+                            ),
+                            constraints: const BoxConstraints(
+                              minHeight: 40,
+                              minWidth: 40,
+                            ),
+                            child: Stack(
+                              children: [
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (message.replyTo != null && replyContent != null) replyPreview(),
+                                    if (message.replyTo != null && replyContent != null) const SizedBox(height: 8),
+                                    messageContentWidget(),
+                                    const SizedBox(height: 6),
+                                  ],
+                                ),
+                                // Bubble tail
+                                Positioned(
+                                  bottom: 0,
+                                  left: isMe ? null : 0,
+                                  right: isMe ? 0 : null,
+                                  child: CustomPaint(
+                                    painter: _BubbleTailPainter(
+                                      color: isMe 
+                                          ? (Theme.of(context).brightness == Brightness.dark 
+                                              ? Colors.green[600]! 
+                                              : Theme.of(context).primaryColor)
+                                          : (Theme.of(context).brightness == Brightness.dark ? Colors.grey[800]! : Colors.grey[200]!),
+                                      isMe: isMe,
+                                    ),
+                                    size: const Size(16, 10),
                                   ),
                                 ),
-                              const SizedBox(height: 4),
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    timeago.format(message.timestamp),
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: isMe ? Colors.white70 : Colors.black54,
+                                if (_showReplyHighlight)
+                                  Positioned(
+                                    left: 0,
+                                    top: 0,
+                                    bottom: 0,
+                                    child: Container(
+                                      width: 4,
+                                      decoration: BoxDecoration(
+                                        color: isMe ? Colors.blue : Colors.green,
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
                                     ),
                                   ),
-                                  const SizedBox(width: 4),
-                                  if (isMe)
-                                    Icon(
-                                      message.isRead
-                                          ? Icons.done_all
-                                          : Icons.done,
-                                      size: 12,
-                                      color: message.isRead
-                                          ? Colors.blue
-                                          : Colors.white70,
-                                    ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        // Bubble tail
-                        Positioned(
-                          bottom: 0,
-                          left: isMe ? null : 0,
-                          right: isMe ? 0 : null,
-                          child: CustomPaint(
-                            painter: _BubbleTailPainter(
-                              color: isMe ? Theme.of(context).primaryColor : Colors.grey[200]!,
-                              isMe: isMe,
+                              ],
                             ),
-                            size: const Size(16, 10),
                           ),
-                        ),
-                      ],
+                        );
+                      },
                     ),
                   ),
                 ),
               ),
               if (isMe) ...[
-                const SizedBox(width: 8),
+                // Avatar removed for one-to-one chat
+                /**
+                 *   const SizedBox(width: 8),
                 const CircleAvatar(
                   radius: 16,
                   child: Icon(Icons.person),
                 ),
+                 */
               ],
             ],
           ),

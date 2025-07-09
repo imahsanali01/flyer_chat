@@ -62,6 +62,9 @@ class MessageModel {
   @HiveField(12)
   final bool isDeleted;
 
+  @HiveField(13)
+  final String? originalContent;
+
   MessageModel({
     required this.id,
     required this.senderId,
@@ -76,6 +79,7 @@ class MessageModel {
     this.isEdited = false,
     this.editedAt,
     this.isDeleted = false,
+    this.originalContent,
   });
 
   factory MessageModel.fromMap(Map<String, dynamic> map) {
@@ -97,6 +101,7 @@ class MessageModel {
           ? (map['editedAt'] as Timestamp).toDate()
           : null,
       isDeleted: map['isDeleted'] as bool? ?? false,
+      originalContent: map['originalContent'] as String?,
     );
   }
 
@@ -115,6 +120,7 @@ class MessageModel {
       'isEdited': isEdited,
       'editedAt': editedAt != null ? Timestamp.fromDate(editedAt!) : null,
       'isDeleted': isDeleted,
+      'originalContent': originalContent,
     };
   }
 
@@ -132,6 +138,7 @@ class MessageModel {
     bool? isEdited,
     DateTime? editedAt,
     bool? isDeleted,
+    String? originalContent,
   }) {
     return MessageModel(
       id: id ?? this.id,
@@ -147,6 +154,7 @@ class MessageModel {
       isEdited: isEdited ?? this.isEdited,
       editedAt: editedAt ?? this.editedAt,
       isDeleted: isDeleted ?? this.isDeleted,
+      originalContent: originalContent ?? this.originalContent,
     );
   }
 }
