@@ -195,6 +195,41 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
                   ),
                 )
               : const Icon(Icons.broken_image, size: 32);
+        } else if (repliedMessage != null && repliedMessage.type == MessageType.video) {
+          // For video, show a play icon overlay on a dark box (no frame extraction for simplicity)
+          contentWidget = Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: const Center(
+              child: Icon(Icons.play_circle_fill, color: Colors.white, size: 32),
+            ),
+          );
+        } else if (repliedMessage != null && repliedMessage.type == MessageType.file) {
+          final fileName = repliedMessage.metadata?['name'] ?? 'File';
+          contentWidget = Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.insert_drive_file, size: 24),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  fileName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isMe
+                        ? Colors.white70
+                        : (Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black87),
+                  ),
+                ),
+              ),
+            ],
+          );
         } else {
           contentWidget = Text(
             replyContent!,

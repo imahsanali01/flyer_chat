@@ -1,3 +1,4 @@
+import 'package:flutter/src/widgets/framework.dart';
 import 'package:hive/hive.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -59,6 +60,21 @@ class UserModel {
       'avatarType': avatarType,
       'avatarValue': avatarValue,
     };
+  }
+  factory UserModel.empty() {
+    return UserModel(
+      uid: '',
+      email: '',
+      displayName: '',
+      lastSeen: DateTime.now(),
+      isOnline: false,
+      photoBase64: '',
+      avatarType: '',
+      avatarValue: '',
+      photoURL: '',
+      status: '',
+    
+    );
   }
 
   factory UserModel.fromMap(Map<String, dynamic> map) {
@@ -159,4 +175,6 @@ class UserModel {
   String toString() {
     return 'UserModel(uid: $uid, email: $email, displayName: $displayName, photoURL: $photoURL, status: $status, lastSeen: $lastSeen, isOnline: $isOnline)';
   }
+
+  // static Widget empty() {}
 }

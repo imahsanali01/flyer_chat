@@ -44,6 +44,8 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _showScrollToBottom = false;
   String _messageSearchQuery = '';
   bool _isSearchingMessages = false;
+  bool _isMuted = false;
+  bool _isArchived = false;
 
   // Typing indicator state
   Timer? _typingTimer;
@@ -65,6 +67,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _scrollToBottom();
       });
     });
+    _loadMutedAndArchived();
   }
 
   @override
@@ -301,6 +304,16 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {});
   }
 
+  Future<void> _loadMutedAndArchived() async {
+    final userDoc = await FirebaseFirestore.instance.collection('users').doc(widget.currentUser.uid).get();
+    final data = userDoc.data() ?? {};
+    final chatId = _getChatId();
+    setState(() {
+      _isMuted = (data['mutedChats'] ?? []).contains(chatId);
+      _isArchived = (data['archivedChats'] ?? []).contains(chatId);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -372,6 +385,22 @@ class _ChatScreenState extends State<ChatScreen> {
                                 Navigator.pop(context, 'clear');
                               },
                             ),
+                            // Archive
+                            ListTile(
+                              leading: Icon(_isArchived ? Icons.unarchive : Icons.archive_outlined),
+                              title: Text(_isArchived ? 'Unarchive' : 'Archive'),
+                              onTap: () async {
+                                Navigator.pop(context, 'archive');
+                              },
+                            ),
+                            // Mute
+                            ListTile(
+                              leading: Icon(_isMuted ? Icons.notifications_active : Icons.notifications_off_outlined),
+                              title: Text(_isMuted ? 'Unmute' : 'Mute'),
+                              onTap: () async {
+                                Navigator.pop(context, 'mute');
+                              },
+                            ),
                           ],
                         ),
                       ),
@@ -397,6 +426,38 @@ class _ChatScreenState extends State<ChatScreen> {
                       if (confirm == true) {
                         await _clearChatForCurrentUser();
                       }
+                    } else if (action == 'archive') {
+                      final userRef = FirebaseFirestore.instance.collection('users').doc(widget.currentUser.uid);
+                      final userDoc = await userRef.get();
+                      final data = userDoc.data() ?? {};
+                      final chatId = _getChatId();
+                      final archived = Set<String>.from(data['archivedChats'] ?? []);
+                      if (_isArchived) {
+                        archived.remove(chatId);
+                      } else {
+                        archived.add(chatId);
+                      }
+                      await userRef.update({'archivedChats': archived.toList()});
+                      setState(() => _isArchived = !_isArchived);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(_isArchived ? 'Chat archived.' : 'Chat unarchived.')),
+                      );
+                    } else if (action == 'mute') {
+                      final userRef = FirebaseFirestore.instance.collection('users').doc(widget.currentUser.uid);
+                      final userDoc = await userRef.get();
+                      final data = userDoc.data() ?? {};
+                      final chatId = _getChatId();
+                      final muted = Set<String>.from(data['mutedChats'] ?? []);
+                      if (_isMuted) {
+                        muted.remove(chatId);
+                      } else {
+                        muted.add(chatId);
+                      }
+                      await userRef.update({'mutedChats': muted.toList()});
+                      setState(() => _isMuted = !_isMuted);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(_isMuted ? 'Chat muted.' : 'Chat unmuted.')),
+                      );
                     }
                   },
                   child: Row(

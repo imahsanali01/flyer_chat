@@ -5,6 +5,8 @@ import 'package:path/path.dart' as path;
 import 'package:uuid/uuid.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:convert';
+import 'package:image/image.dart' as img;
+import 'package:video_compress/video_compress.dart';
 
 class MediaService {
   final FirebaseStorage _storage = FirebaseStorage.instance;
@@ -121,12 +123,21 @@ class MediaService {
     try {
       final XFile? image = await _imagePicker.pickImage(
         source: ImageSource.gallery,
-        imageQuality: 70,
+        imageQuality: 100, // Lower quality for more aggressive compression
       );
       if (image == null) return null;
-      final bytes = await File(image.path).readAsBytes();
+      // Try to resize and compress further if needed
+      var bytes = await File(image.path).readAsBytes();
       if (bytes.length > 900 * 1024) {
-        return {'error': 'Image too large (max 900KB)'};
+        // Try resizing
+        final decoded = img.decodeImage(bytes);
+        if (decoded != null) {
+          final resized = img.copyResize(decoded, width: 800); // Resize to max 800px width
+          bytes = img.encodeJpg(resized, quality: 30); // Lower quality
+        }
+      }
+      if (bytes.length > 900 * 1024) {
+        return {'error': 'Image could not be compressed below 900KB and cannot be uploaded.'};
       }
       final base64 = base64Encode(bytes);
       return {
@@ -148,15 +159,30 @@ class MediaService {
         maxDuration: const Duration(minutes: 5),
       );
       if (video == null) return null;
-      final bytes = await File(video.path).readAsBytes();
+      File file = File(video.path);
+      // Try to compress video
+      MediaInfo? compressed;
+      try {
+        compressed = await VideoCompress.compressVideo(
+          video.path,
+          quality: VideoQuality.LowQuality,
+          deleteOrigin: false,
+        );
+      } catch (e) {
+        compressed = null;
+      }
+      if (compressed != null && compressed.file != null) {
+        file = compressed.file!;
+      }
+      var bytes = await file.readAsBytes();
       if (bytes.length > 900 * 1024) {
-        return {'error': 'Video too large (max 900KB)'};
+        return {'error': 'Video could not be compressed below 900KB and cannot be uploaded.'};
       }
       final base64 = base64Encode(bytes);
       return {
         'base64': base64,
-        'name': path.basename(video.path),
-        'type': path.extension(video.path),
+        'name': path.basename(file.path),
+        'type': path.extension(file.path),
         'size': bytes.length,
       };
     } catch (e) {
