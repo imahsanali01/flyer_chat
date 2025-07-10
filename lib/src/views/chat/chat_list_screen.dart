@@ -15,6 +15,9 @@ class ChatListScreen extends StatefulWidget {
 }
 
 class _ChatListScreenState extends State<ChatListScreen> {
+  String _searchQuery = '';
+  bool _isSearching = false;
+
   @override
   void initState() {
     super.initState();
@@ -32,8 +35,52 @@ class _ChatListScreenState extends State<ChatListScreen> {
     
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Chats'),
+        title: !_isSearching
+            ? const Text('Chats')
+            : TextField(
+                autofocus: true,
+                decoration: InputDecoration(
+                  hintText: 'Search users...',
+                  border: InputBorder.none,
+                  hintStyle: TextStyle(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white70
+                        : Colors.black54,
+                  ),
+                  filled: true,
+                  fillColor: Theme.of(context).appBarTheme.backgroundColor ?? (Theme.of(context).brightness == Brightness.dark ? Colors.grey[900] : Colors.white),
+                ),
+                style: TextStyle(
+                  color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black,
+                  fontSize: 18,
+                ),
+                cursorColor: Theme.of(context).colorScheme.primary,
+                onChanged: (value) {
+                  setState(() {
+                    _searchQuery = value.trim().toLowerCase();
+                  });
+                },
+              ),
         actions: [
+          if (!_isSearching)
+            IconButton(
+              icon: const Icon(Icons.search),
+              onPressed: () {
+                setState(() {
+                  _isSearching = true;
+                });
+              },
+            ),
+          if (_isSearching)
+            IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: () {
+                setState(() {
+                  _isSearching = false;
+                  _searchQuery = '';
+                });
+              },
+            ),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () {
@@ -45,112 +92,117 @@ class _ChatListScreenState extends State<ChatListScreen> {
               );
             },
           ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () {
-              context.read<AuthService>().signOut();
-            },
-          ),
+          // IconButton(
+          //   icon: const Icon(Icons.logout),
+          //   onPressed: () {
+          //     context.read<AuthService>().signOut();
+          //   },
+          // ),
         ],
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('users')
-            .where('uid', isNotEqualTo: currentUser?.uid)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(
-              child: Text('Error: ${snapshot.error}'),
-            );
-          }
-
-          if (!snapshot.hasData) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
-          }
-
-          final users = snapshot.data!.docs
-              .map((doc) => UserModel.fromMap(doc.data() as Map<String, dynamic>))
-              .toList();
-
-          if (users.isEmpty) {
-            return const Center(
-              child: Text('No users found'),
-            );
-          }
-
-          return ListView.builder(
-            itemCount: users.length,
-            itemBuilder: (context, index) {
-              final user = users[index];
-              final chatId = [currentUser!.uid, user.uid]..sort();
-              final chatDocId = chatId.join('_');
-              return FutureBuilder<QuerySnapshot>(
-                future: FirebaseFirestore.instance
-                    .collection('chats')
-                    .doc(chatDocId)
-                    .collection('messages')
-                    .orderBy('timestamp', descending: true)
-                    .limit(1)
-                    .get(),
-                builder: (context, snapshot) {
-                  String subtitle = user.status ?? 'No status';
-                  if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
-                    final lastMsg = snapshot.data!.docs.first.data() as Map<String, dynamic>;
-                    subtitle = lastMsg['content'] ?? '';
-                  }
-                  // Robust online status: only show online if lastSeen is recent
-                  final now = DateTime.now();
-                  final isRecentlyOnline = user.isOnline && now.difference(user.lastSeen).inSeconds < 30;
-                  return StreamBuilder<DocumentSnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('chats')
-                        .doc(chatDocId)
-                        .snapshots(),
-                    builder: (context, typingSnap) {
-                      bool isTyping = false;
-                      if (typingSnap.hasData && typingSnap.data!.data() != null) {
-                        final data = typingSnap.data!.data() as Map<String, dynamic>;
-                        if (data['typingStatus'] != null) {
-                          final typingStatus = Map<String, dynamic>.from(data['typingStatus']);
-                          isTyping = typingStatus[user.uid] == true;
-                        }
-                      }
-                      return ListTile(
-                        leading: _buildUserAvatar(user, context),
-                        title: Text(user.displayName),
-                        subtitle: Text(isTyping ? 'Typing...' : subtitle),
-                        trailing: Container(
-                          width: 12,
-                          height: 12,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: isRecentlyOnline ? Colors.green : Colors.grey,
-                          ),
-                        ),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => ChatScreen(
-                                currentUser: currentUser,
-                                otherUser: user,
-                              ),
-                            ),
-                          );
-                        },
-                      );
-                    },
+              stream: FirebaseFirestore.instance
+                  .collection('users')
+                  .where('uid', isNotEqualTo: currentUser?.uid)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Text('Error: ${snapshot.error}'),
                   );
-                },
-              );
-            },
-          );
-        },
-      ),
-    );
+                }
+
+                if (!snapshot.hasData) {
+                  return const Center(
+                    child: CircularProgressIndicator(),
+                  );
+                }
+
+                final users = snapshot.data!.docs
+                    .map((doc) => UserModel.fromMap(doc.data() as Map<String, dynamic>))
+                    .toList();
+
+                final filteredUsers = _searchQuery.isEmpty
+                    ? users
+                    : users.where((u) => u.displayName.toLowerCase().contains(_searchQuery)).toList();
+
+                if (filteredUsers.isEmpty) {
+                  return const Center(
+                    child: Text('No users found'),
+                  );
+                }
+
+                return ListView.builder(
+                  itemCount: filteredUsers.length,
+                  itemBuilder: (context, index) {
+                    final user = filteredUsers[index];
+                    final chatId = [currentUser!.uid, user.uid]..sort();
+                    final chatDocId = chatId.join('_');
+                    return FutureBuilder<QuerySnapshot>(
+                      future: FirebaseFirestore.instance
+                          .collection('chats')
+                          .doc(chatDocId)
+                          .collection('messages')
+                          .orderBy('timestamp', descending: true)
+                          .limit(1)
+                          .get(),
+                      builder: (context, snapshot) {
+                        String subtitle = user.status ?? 'No status';
+                        if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+                          final lastMsg = snapshot.data!.docs.first.data() as Map<String, dynamic>;
+                          subtitle = lastMsg['content'] ?? '';
+                        }
+                        // Robust online status: only show online if lastSeen is recent
+                        final now = DateTime.now();
+                        final isRecentlyOnline = user.isOnline && now.difference(user.lastSeen).inSeconds < 30;
+                        return StreamBuilder<DocumentSnapshot>(
+                          stream: FirebaseFirestore.instance
+                              .collection('chats')
+                              .doc(chatDocId)
+                              .snapshots(),
+                          builder: (context, typingSnap) {
+                            bool isTyping = false;
+                            if (typingSnap.hasData && typingSnap.data!.data() != null) {
+                              final data = typingSnap.data!.data() as Map<String, dynamic>;
+                              if (data['typingStatus'] != null) {
+                                final typingStatus = Map<String, dynamic>.from(data['typingStatus']);
+                                isTyping = typingStatus[user.uid] == true;
+                              }
+                            }
+                            return ListTile(
+                              leading: _buildUserAvatar(user, context),
+                              title: Text(user.displayName),
+                              subtitle: Text(isTyping ? 'Typing...' : subtitle),
+                              trailing: Container(
+                                width: 12,
+                                height: 12,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: isRecentlyOnline ? Colors.green : Colors.grey,
+                                ),
+                              ),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => ChatScreen(
+                                      currentUser: currentUser,
+                                      otherUser: user,
+                                    ),
+                                  ),
+                                );
+                              },
+                            );
+                          },
+                        );
+                      },
+                    );
+                  },
+                );
+              },
+            ));
+      
+    
   }
 }
 

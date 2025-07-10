@@ -42,6 +42,8 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _showEmoji = false;
   MessageModel? _replyTo;
   bool _showScrollToBottom = false;
+  String _messageSearchQuery = '';
+  bool _isSearchingMessages = false;
 
   // Typing indicator state
   Timer? _typingTimer;
@@ -278,44 +280,88 @@ class _ChatScreenState extends State<ChatScreen> {
             : null,
         floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
         appBar: AppBar(
-          title: Row(
-            children: [
-              _buildUserAvatar(widget.otherUser, context, radius: 18, fontSize: 18),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(widget.otherUser.displayName, style: const TextStyle(fontSize: 18)),
-                  StreamBuilder<DocumentSnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('users')
-                        .doc(widget.otherUser.uid)
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      bool isOnline = false;
-                      if (snapshot.hasData && snapshot.data!.data() != null) {
-                        final data = snapshot.data!.data() as Map<String, dynamic>;
-                        final lastSeen = data['lastSeen'] as Timestamp?;
-                        final isOnlineStatus = data['isOnline'] as bool? ?? false;
-                        if (lastSeen != null) {
-                          final now = DateTime.now();
-                          isOnline = isOnlineStatus && now.difference(lastSeen.toDate()).inSeconds < 30;
-                        }
-                      }
-                      return Text(
-                        isOnline ? 'Online' : 'Offline',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isOnline ? Colors.green : Colors.grey,
+          title: !_isSearchingMessages
+              ? Row(
+                  children: [
+                    _buildUserAvatar(widget.otherUser, context, radius: 18, fontSize: 18),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(widget.otherUser.displayName, style: const TextStyle(fontSize: 18)),
+                        StreamBuilder<DocumentSnapshot>(
+                          stream: FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(widget.otherUser.uid)
+                              .snapshots(),
+                          builder: (context, snapshot) {
+                            bool isOnline = false;
+                            if (snapshot.hasData && snapshot.data!.data() != null) {
+                              final data = snapshot.data!.data() as Map<String, dynamic>;
+                              final lastSeen = data['lastSeen'] as Timestamp?;
+                              final isOnlineStatus = data['isOnline'] as bool? ?? false;
+                              if (lastSeen != null) {
+                                final now = DateTime.now();
+                                isOnline = isOnlineStatus && now.difference(lastSeen.toDate()).inSeconds < 30;
+                              }
+                            }
+                            return Text(
+                              isOnline ? 'Online' : 'Offline',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isOnline ? Colors.green : Colors.grey,
+                              ),
+                            );
+                          },
                         ),
-                      );
-                    },
+                      ],
+                    ),
+                  ],
+                )
+              : TextField(
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    hintText: 'Search messages...',
+                    border: InputBorder.none,
+                    hintStyle: TextStyle(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white70
+                          : Colors.black54,
+                    ),
+                    filled: true,
+                    fillColor: Theme.of(context).appBarTheme.backgroundColor ?? (Theme.of(context).brightness == Brightness.dark ? Colors.grey[900] : Colors.white),
                   ),
-                ],
-              ),
-            ],
-          ),
+                  style: TextStyle(
+                    color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black,
+                    fontSize: 18,
+                  ),
+                  cursorColor: Theme.of(context).colorScheme.primary,
+                  onChanged: (value) {
+                    setState(() {
+                      _messageSearchQuery = value.trim().toLowerCase();
+                    });
+                  },
+                ),
           actions: [
+            if (!_isSearchingMessages)
+              IconButton(
+                icon: const Icon(Icons.search),
+                onPressed: () {
+                  setState(() {
+                    _isSearchingMessages = true;
+                  });
+                },
+              ),
+            if (_isSearchingMessages)
+              IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () {
+                  setState(() {
+                    _isSearchingMessages = false;
+                    _messageSearchQuery = '';
+                  });
+                },
+              ),
             IconButton(
               icon: const Icon(Icons.call),
               onPressed: () {
@@ -390,14 +436,18 @@ class _ChatScreenState extends State<ChatScreen> {
                   // Build a map for reply-to lookup
                   final allMessages = {for (var m in messages) m.id: m};
 
+                  final filteredMessages = _messageSearchQuery.isEmpty
+                      ? messages
+                      : messages.where((m) => m.content.toLowerCase().contains(_messageSearchQuery)).toList();
+
                   // Mark messages as read when messages are loaded
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     _markMessagesAsRead();
                   });
 
-                  if (messages.isEmpty) {
+                  if (filteredMessages.isEmpty) {
                     return const Center(
-                      child: Text('No messages yet'),
+                      child: Text('No messages found'),
                     );
                   }
 
@@ -422,11 +472,12 @@ class _ChatScreenState extends State<ChatScreen> {
                   return ListView.builder(
                     controller: _scrollController,
                     padding: const EdgeInsets.all(8.0),
-                    itemCount: messages.length,
+                    itemCount: filteredMessages.length,
                     itemBuilder: (context, index) {
-                      final message = messages[index];
+                      final message = filteredMessages[index];
                       final isMe = message.senderId == widget.currentUser.uid;
-                      final previousMessage = index > 0 ? messages[index - 1] : null;
+                      final originalIndex = messages.indexWhere((m) => m.id == message.id);
+                      final previousMessage = originalIndex > 0 ? messages[originalIndex - 1] : null;
 
                       return MessageBubble(
                         message: message,
