@@ -664,10 +664,17 @@ class _ChatScreenState extends State<ChatScreen> {
                       final originalIndex = messages.indexWhere((m) => m.id == message.id);
                       final previousMessage = originalIndex > 0 ? messages[originalIndex - 1] : null;
 
+                      // Collect all media messages and find the index of this message in that list
+                      final mediaMessages = visibleMessages
+                        .where((m) => m.type == MessageType.image || m.type == MessageType.video)
+                        .toList();
+                      final mediaIndex = (message.type == MessageType.image || message.type == MessageType.video)
+                        ? mediaMessages.indexWhere((m) => m.id == message.id)
+                        : null;
+
                       return MessageBubble(
                         message: message,
                         isMe: isMe,
-                        // onReply is now also used for edit/delete
                         onReply: (String? messageId, [bool? isEdit]) async {
                           if (messageId != null && isEdit != null) {
                             if (isEdit) {
@@ -740,6 +747,8 @@ class _ChatScreenState extends State<ChatScreen> {
                         allMessages: allMessages,
                         otherUserName: widget.otherUser.displayName,
                         previousMessage: previousMessage,
+                        mediaMessages: mediaMessages.isNotEmpty ? mediaMessages : null,
+                        mediaIndex: mediaIndex,
                       );
                     },
                   );

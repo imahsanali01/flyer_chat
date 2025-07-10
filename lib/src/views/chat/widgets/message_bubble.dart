@@ -15,6 +15,8 @@ class MessageBubble extends StatefulWidget {
   final Map<String, MessageModel> allMessages;
   final String? otherUserName;
   final MessageModel? previousMessage;
+  final List<MessageModel>? mediaMessages;
+  final int? mediaIndex;
 
   const MessageBubble({
     super.key,
@@ -24,6 +26,8 @@ class MessageBubble extends StatefulWidget {
     required this.allMessages,
     this.otherUserName,
     this.previousMessage,
+    this.mediaMessages,
+    this.mediaIndex,
   });
 
   @override
@@ -113,7 +117,11 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (message.type != MessageType.text)
-              MediaPreview(message: message),
+              MediaPreview(
+                message: message,
+                mediaMessages: widget.mediaMessages,
+                mediaIndex: widget.mediaIndex,
+              ),
             if (message.type == MessageType.text && message.content.isNotEmpty)
               Row(
                 children: [

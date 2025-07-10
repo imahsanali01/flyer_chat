@@ -9,13 +9,19 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:photo_view/photo_view.dart';
+import '../media_gallery_screen.dart'; // Corrected import for MediaGalleryScreen
+import 'package:video_thumbnail/video_thumbnail.dart';
 
 class MediaPreview extends StatefulWidget {
   final MessageModel message;
+  final List<MessageModel>? mediaMessages;
+  final int? mediaIndex;
 
   const MediaPreview({
     super.key,
     required this.message,
+    this.mediaMessages,
+    this.mediaIndex,
   });
 
   @override
@@ -25,12 +31,14 @@ class MediaPreview extends StatefulWidget {
 class _MediaPreviewState extends State<MediaPreview> {
   VideoPlayerController? _videoController;
   ChewieController? _chewieController;
+  Uint8List? _videoThumbnail;
+  bool _loadingThumbnail = false;
 
   @override
   void initState() {
     super.initState();
     if (widget.message.type == MessageType.video) {
-      _initializeVideo();
+      _generateVideoThumbnail();
     }
   }
 
@@ -71,6 +79,39 @@ class _MediaPreviewState extends State<MediaPreview> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _generateVideoThumbnail() async {
+    setState(() => _loadingThumbnail = true);
+    Uint8List? videoBytes;
+    if (widget.message.content.isNotEmpty) {
+      videoBytes = base64Decode(widget.message.content);
+    } else if (widget.message.metadata != null && widget.message.metadata?['base64'] != null) {
+      videoBytes = base64Decode(widget.message.metadata?['base64']);
+    }
+    if (videoBytes == null) {
+      setState(() => _loadingThumbnail = false);
+      return;
+    }
+    try {
+      // Write bytes to a temp file first since thumbnailData expects a file path
+      final tempDir = await getTemporaryDirectory();
+      final tempFile = await File('${tempDir.path}/temp_thumb.mp4').create();
+      await tempFile.writeAsBytes(videoBytes, flush: true);
+      
+      final thumb = await VideoThumbnail.thumbnailData(
+        video: tempFile.path,
+        imageFormat: ImageFormat.PNG,
+        maxWidth: 400,
+        quality: 60,
+      );
+      if (mounted) setState(() {
+        _videoThumbnail = thumb;
+        _loadingThumbnail = false;
+      });
+    } catch (e) {
+      setState(() => _loadingThumbnail = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     switch (widget.message.type) {
@@ -84,30 +125,13 @@ class _MediaPreviewState extends State<MediaPreview> {
         if (imageBytes == null) return const Icon(Icons.error);
         return GestureDetector(
           onTap: () {
+            final mediaList = widget.mediaMessages ?? [widget.message];
+            final index = widget.mediaIndex ?? 0;
             Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (_) => Scaffold(
-                  backgroundColor: Colors.black,
-                  body: SafeArea(
-                    child: Stack(
-                      children: [
-                        PhotoView(
-                          imageProvider: MemoryImage(imageBytes!),
-                          backgroundDecoration: const BoxDecoration(color: Colors.black),
-                          minScale: PhotoViewComputedScale.contained,
-                          maxScale: PhotoViewComputedScale.covered * 3.0,
-                        ),
-                        Positioned(
-                          top: 16,
-                          left: 8,
-                          child: IconButton(
-                            icon: const Icon(Icons.close, color: Colors.white, size: 32),
-                            onPressed: () => Navigator.of(context).pop(),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                builder: (_) => MediaGalleryScreen(
+                  mediaMessages: mediaList,
+                  initialIndex: index,
                 ),
               ),
             );
@@ -124,15 +148,57 @@ class _MediaPreviewState extends State<MediaPreview> {
         );
 
       case MessageType.video:
-        if (_chewieController != null) {
-          return SizedBox(
-            height: 200,
-            child: Chewie(controller: _chewieController!),
-          );
-        }
-        return const SizedBox(
-          height: 200,
-          child: Center(child: CircularProgressIndicator()),
+        return GestureDetector(
+          onTap: () async {
+            final mediaList = widget.mediaMessages ?? [widget.message];
+            final index = widget.mediaIndex ?? 0;
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => MediaGalleryScreen(
+                  mediaMessages: mediaList,
+                  initialIndex: index,
+                ),
+              ),
+            );
+          },
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Container(
+                height: 200,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: Colors.black12,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: _loadingThumbnail
+                    ? const Center(child: CircularProgressIndicator())
+                    : (_videoThumbnail != null
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.memory(
+                              _videoThumbnail!,
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              height: 200,
+                            ),
+                          )
+                        : const Icon(Icons.videocam, color: Colors.black26, size: 64)),
+              ),
+              Container(
+                height: 200,
+                width: double.infinity,
+                alignment: Alignment.center,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.play_arrow, color: Colors.white, size: 48),
+                ),
+              ),
+            ],
+          ),
         );
 
       case MessageType.file:

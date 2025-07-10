@@ -66,7 +66,22 @@ class _ArchivedChatsScreenState extends State<ArchivedChatsScreen> {
                   String subtitle = user.status ?? 'No status';
                   if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
                     final lastMsg = snapshot.data!.docs.first.data() as Map<String, dynamic>;
-                    subtitle = lastMsg['content'] ?? '';
+                    // Use MessageType to show type label
+                    String typeStr = lastMsg['type'] ?? 'text';
+                    String content = lastMsg['content'] ?? '';
+                    switch (typeStr) {
+                      case 'image':
+                        subtitle = 'Photo';
+                        break;
+                      case 'video':
+                        subtitle = 'Video';
+                        break;
+                      case 'file':
+                        subtitle = 'File';
+                        break;
+                      default:
+                        subtitle = content;
+                    }
                   }
                   final now = DateTime.now();
                   final isRecentlyOnline = user.isOnline && now.difference(user.lastSeen).inSeconds < 30;
