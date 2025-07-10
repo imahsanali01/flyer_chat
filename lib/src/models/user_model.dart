@@ -26,6 +26,13 @@ class UserModel {
   @HiveField(6)
   final bool isOnline;
 
+  @HiveField(7)
+  final String? photoBase64;
+  @HiveField(8)
+  final String? avatarType;
+  @HiveField(9)
+  final String? avatarValue;
+
   UserModel({
     required this.uid,
     required this.email,
@@ -34,6 +41,9 @@ class UserModel {
     this.status,
     required this.lastSeen,
     this.isOnline = false,
+    this.photoBase64,
+    this.avatarType,
+    this.avatarValue,
   });
 
   Map<String, dynamic> toMap() {
@@ -45,6 +55,9 @@ class UserModel {
       'status': status,
       'lastSeen': Timestamp.fromDate(lastSeen),
       'isOnline': isOnline,
+      'photoBase64': photoBase64,
+      'avatarType': avatarType,
+      'avatarValue': avatarValue,
     };
   }
 
@@ -110,6 +123,9 @@ class UserModel {
       status: status,
       lastSeen: lastSeen,
       isOnline: isOnline,
+      photoBase64: map['photoBase64'] as String?,
+      avatarType: map['avatarType'] as String?,
+      avatarValue: map['avatarValue'] as String?,
     );
   }
 
@@ -121,6 +137,9 @@ class UserModel {
     String? status,
     DateTime? lastSeen,
     bool? isOnline,
+    String? photoBase64,
+    String? avatarType,
+    String? avatarValue,
   }) {
     return UserModel(
       uid: uid ?? this.uid,
@@ -130,6 +149,9 @@ class UserModel {
       status: status ?? this.status,
       lastSeen: lastSeen ?? this.lastSeen,
       isOnline: isOnline ?? this.isOnline,
+      photoBase64: photoBase64 ?? this.photoBase64,
+      avatarType: avatarType ?? this.avatarType,
+      avatarValue: avatarValue ?? this.avatarValue,
     );
   }
 

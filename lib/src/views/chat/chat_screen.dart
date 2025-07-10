@@ -47,6 +47,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Timer? _typingTimer;
   bool _isOtherTyping = false;
   StreamSubscription<DocumentSnapshot>? _typingSubscription;
+  bool _isOtherUserOnline = false;
 
   @override
   void initState() {
@@ -279,29 +280,36 @@ class _ChatScreenState extends State<ChatScreen> {
         appBar: AppBar(
           title: Row(
             children: [
-              CircleAvatar(
-                radius: 18,
-                backgroundColor: Theme.of(context).brightness == Brightness.light
-                    ? Theme.of(context).colorScheme.primary.withOpacity(0.15)
-                    : Colors.grey[700],
-                backgroundImage: (widget.otherUser.photoURL != null && widget.otherUser.photoURL!.isNotEmpty)
-                    ? NetworkImage(widget.otherUser.photoURL!)
-                    : null,
-                child: (widget.otherUser.photoURL == null || widget.otherUser.photoURL!.isEmpty)
-                    ? Text((widget.otherUser.displayName != null && widget.otherUser.displayName!.isNotEmpty) ? widget.otherUser.displayName![0].toUpperCase() : '', style: const TextStyle(fontSize: 18, color: Colors.white))
-                    : null,
-              ),
+              _buildUserAvatar(widget.otherUser, context, radius: 18, fontSize: 18),
               const SizedBox(width: 12),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(widget.otherUser.displayName, style: const TextStyle(fontSize: 18)),
-                  Text(
-                    widget.otherUser.isOnline ? 'Online' : 'Offline',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: widget.otherUser.isOnline ? Colors.green : Colors.grey,
-                    ),
+                  StreamBuilder<DocumentSnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(widget.otherUser.uid)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      bool isOnline = false;
+                      if (snapshot.hasData && snapshot.data!.data() != null) {
+                        final data = snapshot.data!.data() as Map<String, dynamic>;
+                        final lastSeen = data['lastSeen'] as Timestamp?;
+                        final isOnlineStatus = data['isOnline'] as bool? ?? false;
+                        if (lastSeen != null) {
+                          final now = DateTime.now();
+                          isOnline = isOnlineStatus && now.difference(lastSeen.toDate()).inSeconds < 30;
+                        }
+                      }
+                      return Text(
+                        isOnline ? 'Online' : 'Offline',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isOnline ? Colors.green : Colors.grey,
+                        ),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -1203,6 +1211,31 @@ class _TypingBubbleState extends State<TypingBubble> with SingleTickerProviderSt
       decoration: BoxDecoration(
         color: Colors.grey[600],
         shape: BoxShape.circle,
+      ),
+    );
+  }
+} 
+
+Widget _buildUserAvatar(UserModel user, BuildContext context, {double radius = 24, double fontSize = 22}) {
+  if (user.photoBase64 != null && user.photoBase64!.isNotEmpty) {
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.15),
+      backgroundImage: MemoryImage(base64Decode(user.photoBase64!)),
+    );
+  } else if (user.avatarType == 'emoji' && user.avatarValue != null) {
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: Colors.orange.withOpacity(0.2),
+      child: Text(user.avatarValue!, style: TextStyle(fontSize: fontSize)),
+    );
+  } else {
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.15),
+      child: Text(
+        user.displayName.isNotEmpty ? user.displayName[0].toUpperCase() : '',
+        style: TextStyle(color: Colors.white, fontSize: fontSize),
       ),
     );
   }

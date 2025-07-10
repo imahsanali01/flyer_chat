@@ -72,6 +72,10 @@ class AuthService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  Future<void> reloadUserData(String uid) async {
+    await _loadUserData(uid);
+  }
+
   Future<UserModel?> signInWithEmailAndPassword(
     String email,
     String password,

@@ -6,6 +6,10 @@ import '../../services/secure_storage_service.dart';
 import '../../views/auth/change_password_screen.dart';
 import '../../views/auth/password_reset_screen.dart';
 import 'delete_account_screen.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:convert';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -77,6 +81,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final authService = context.watch<AuthService>();
     final isEmailVerified = authService.isEmailVerified();
     final isBiometricEnabled = authService.biometricEnabled;
+    final user = authService.currentUser;
+
+    Future<void> _pickAndUploadImage() async {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+      if (picked != null && user != null) {
+        final ref = FirebaseStorage.instance.ref().child('profile_pics/${user.uid}.jpg');
+        await ref.putData(await picked.readAsBytes());
+        final url = await ref.getDownloadURL();
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).update({'photoURL': url});
+        await authService.reloadUserData(user.uid); // Refresh user data
+        setState(() {});
+      }
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -85,6 +103,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
+          if (user != null) ...[
+            Center(
+              child: Stack(
+                children: [
+                  _buildProfileAvatar(user),
+                  Positioned(
+                    bottom: 0,
+                    right: 0,
+                    child: Row(
+                      children: [
+                        GestureDetector(
+                          onTap: _pickAndUploadImageBase64,
+                          child: CircleAvatar(
+                            radius: 16,
+                            backgroundColor: Theme.of(context).primaryColor,
+                            child: const Icon(Icons.edit, color: Colors.white, size: 18),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: _showAvatarPicker,
+                          child: CircleAvatar(
+                            radius: 16,
+                            backgroundColor: Colors.orange,
+                            child: const Icon(Icons.emoji_emotions, color: Colors.white, size: 18),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
           if (_errorMessage != null)
             Padding(
               padding: const EdgeInsets.only(bottom: 16),
@@ -241,5 +294,74 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildProfileAvatar(user) {
+    if (user.photoBase64 != null && user.photoBase64!.isNotEmpty) {
+      return CircleAvatar(
+        radius: 48,
+        backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.15),
+        backgroundImage: MemoryImage(base64Decode(user.photoBase64!)),
+      );
+    } else if (user.avatarType == 'emoji' && user.avatarValue != null) {
+      return CircleAvatar(
+        radius: 48,
+        backgroundColor: Colors.orange.withOpacity(0.2),
+        child: Text(user.avatarValue!, style: const TextStyle(fontSize: 32)),
+      );
+    } else {
+      return CircleAvatar(
+        radius: 48,
+        backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.15),
+        child: Text(user.displayName.isNotEmpty ? user.displayName[0].toUpperCase() : '', style: const TextStyle(fontSize: 32, color: Colors.white)),
+      );
+    }
+  }
+
+  Future<void> _pickAndUploadImageBase64() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 60, maxWidth: 128, maxHeight: 128);
+    final authService = context.read<AuthService>();
+    final user = authService.currentUser;
+    if (picked != null && user != null) {
+      final bytes = await picked.readAsBytes();
+      final base64Str = base64Encode(bytes);
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+        'photoBase64': base64Str,
+        'photoURL': '',
+        'avatarType': '',
+        'avatarValue': '',
+      });
+      await authService.reloadUserData(user.uid);
+      setState(() {});
+    }
+  }
+
+  void _showAvatarPicker() async {
+    final emojis = ['😀','😎','🦄','🐱','🐶','👽','👾','🐸','🐵','🐼','🦊','🐻','🐯','🦁','🐮','🐷','🐨','🐔','🐧','🐦','🐤','🐣','🦉','🦋','🐌','🐞','🐢','🐍','🐙','🦑','🦀','🐠','🐬','🐳','🐋','🦈','🐊','🐅','🐆','🦓','🦍','🐘','🦏','🦛','🐪','🐫','🦒','🦘','🦥','🦦','🦨','🦡','🐁','🐀','🐇','🐿️','🦔'];
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Pick an avatar'),
+        children: emojis.map((e) => SimpleDialogOption(
+          child: Text(e, style: const TextStyle(fontSize: 28)),
+          onPressed: () => Navigator.pop(context, e),
+        )).toList(),
+      ),
+    );
+    if (selected != null) {
+      final authService = context.read<AuthService>();
+      final user = authService.currentUser;
+      if (user != null) {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+          'avatarType': 'emoji',
+          'avatarValue': selected,
+          'photoBase64': '',
+          'photoURL': '',
+        });
+        await authService.reloadUserData(user.uid);
+        setState(() {});
+      }
+    }
   }
 } 

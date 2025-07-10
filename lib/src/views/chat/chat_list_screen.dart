@@ -5,6 +5,7 @@ import '../../models/user_model.dart';
 import '../../services/auth_service.dart';
 import '../../views/profile/settings_screen.dart';
 import 'chat_screen.dart';
+import 'dart:convert';
 
 class ChatListScreen extends StatefulWidget {
   const ChatListScreen({super.key});
@@ -118,13 +119,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                         }
                       }
                       return ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: Theme.of(context).primaryColor,
-                          child: Text(
-                            user.displayName[0].toUpperCase(),
-                            style: const TextStyle(color: Colors.white),
-                          ),
-                        ),
+                        leading: _buildUserAvatar(user, context),
                         title: Text(user.displayName),
                         subtitle: Text(isTyping ? 'Typing...' : subtitle),
                         trailing: Container(
@@ -154,6 +149,28 @@ class _ChatListScreenState extends State<ChatListScreen> {
             },
           );
         },
+      ),
+    );
+  }
+}
+
+Widget _buildUserAvatar(UserModel user, BuildContext context) {
+  if (user.photoBase64 != null && user.photoBase64!.isNotEmpty) {
+    return CircleAvatar(
+      backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.15),
+      backgroundImage: MemoryImage(base64Decode(user.photoBase64!)),
+    );
+  } else if (user.avatarType == 'emoji' && user.avatarValue != null) {
+    return CircleAvatar(
+      backgroundColor: Colors.orange.withOpacity(0.2),
+      child: Text(user.avatarValue!, style: const TextStyle(fontSize: 22)),
+    );
+  } else {
+    return CircleAvatar(
+      backgroundColor: Theme.of(context).primaryColor,
+      child: Text(
+        user.displayName.isNotEmpty ? user.displayName[0].toUpperCase() : '',
+        style: const TextStyle(color: Colors.white),
       ),
     );
   }
