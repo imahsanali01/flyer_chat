@@ -37,10 +37,11 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
       await authService.deleteAccount(_passwordController.text);
       
       if (mounted) {
-        // Navigate to login screen
-        // Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
-      //  Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (context) => const LoginScreen()), (route) => false);
-     context.read<AuthService>().signOut();
+        await context.read<AuthService>().signOut();
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+          (route) => false,
+        );
       }
     } catch (e) {
       setState(() => _errorMessage = e.toString());

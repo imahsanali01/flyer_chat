@@ -83,6 +83,36 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
               : '');
     }
 
+    // System message: centered, gray, no bubble, no avatar, no tail, no timeago
+    if (message.type == MessageType.system) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12.0),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Flexible(
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Text(
+                  message.content,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.grey[800],
+                    fontStyle: FontStyle.italic,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     // Secret tap counter for recovery
     final ValueNotifier<int> tapCount = ValueNotifier<int>(0);
     final ValueNotifier<bool> showRecovered = ValueNotifier<bool>(false);

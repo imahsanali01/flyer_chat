@@ -230,11 +230,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     try {
                       await authService.signOut();
                       if (mounted) {
-                        // Navigator.of(context) .pushNamedAndRemoveUntil('/login', (route) => false);
-                         //   Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (context) => const LoginScreen()), (route) => false);
-                  Navigator.of(context).pop();
-                   Navigator.of(context).pop();
-                    await  context.read<AuthService>().signOut();
+                        Navigator.of(context).pushAndRemoveUntil(
+                          MaterialPageRoute(builder: (context) => const LoginScreen()),
+                          (route) => false,
+                        );
                       }
                     } catch (e) {
                       ScaffoldMessenger.of(context).showSnackBar(

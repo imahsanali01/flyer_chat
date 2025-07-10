@@ -30,13 +30,14 @@ class MessageModelAdapter extends TypeAdapter<MessageModel> {
       isEdited: fields[10] as bool,
       editedAt: fields[11] as DateTime?,
       isDeleted: fields[12] as bool,
+      originalContent: fields[13] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, MessageModel obj) {
     writer
-      ..writeByte(13)
+      ..writeByte(14)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -62,7 +63,9 @@ class MessageModelAdapter extends TypeAdapter<MessageModel> {
       ..writeByte(11)
       ..write(obj.editedAt)
       ..writeByte(12)
-      ..write(obj.isDeleted);
+      ..write(obj.isDeleted)
+      ..writeByte(13)
+      ..write(obj.originalContent);
   }
 
   @override
@@ -97,6 +100,8 @@ class MessageTypeAdapter extends TypeAdapter<MessageType> {
         return MessageType.location;
       case 6:
         return MessageType.sticker;
+      case 7:
+        return MessageType.system;
       default:
         return MessageType.text;
     }
@@ -125,6 +130,9 @@ class MessageTypeAdapter extends TypeAdapter<MessageType> {
         break;
       case MessageType.sticker:
         writer.writeByte(6);
+        break;
+      case MessageType.system:
+        writer.writeByte(7);
         break;
     }
   }

@@ -18,7 +18,9 @@ enum MessageType {
   @HiveField(5)
   location,
   @HiveField(6)
-  sticker
+  sticker,
+  @HiveField(7)
+  system, // Added for system/info messages
 }
 
 @HiveType(typeId: 2)

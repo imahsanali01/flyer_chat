@@ -558,6 +558,7 @@ class AuthService extends ChangeNotifier with WidgetsBindingObserver {
 
   void _startHeartbeat() {
     _heartbeatTimer?.cancel();
+    // Update presence immediately and every 20 seconds
     _heartbeatTimer = Timer.periodic(const Duration(seconds: 20), (_) {
       updateUserStatus(isOnline: true);
     });
@@ -573,8 +574,10 @@ class AuthService extends ChangeNotifier with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (_user == null) return;
     if (state == AppLifecycleState.resumed) {
+      // App comes to foreground: set online and start heartbeat
       _startHeartbeat();
     } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive || state == AppLifecycleState.detached) {
+      // App goes to background or is closed: set offline and stop heartbeat
       _stopHeartbeat();
     }
   }

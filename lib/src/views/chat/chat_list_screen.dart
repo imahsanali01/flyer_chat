@@ -191,49 +191,61 @@ class _ChatListScreenState extends State<ChatListScreen> {
                           final isMuted = _mutedChats.contains(chatDocId);
                           final isArchived = _archivedChats.contains(chatDocId);
                           if (isArchived) return const SizedBox.shrink();
-                          return FutureBuilder<QuerySnapshot>(
-                            future: FirebaseFirestore.instance
+                          return StreamBuilder<DocumentSnapshot>(
+                            stream: FirebaseFirestore.instance
                                 .collection('chats')
                                 .doc(chatDocId)
-                                .collection('messages')
-                                .orderBy('timestamp', descending: true)
-                                .limit(1)
-                                .get(),
-                            builder: (context, snapshot) {
-                              String subtitle = user.status ?? 'No status';
-                              if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
-                                final lastMsg = snapshot.data!.docs.first.data() as Map<String, dynamic>;
-                                // Use MessageType to show type label
-                                String typeStr = lastMsg['type'] ?? 'text';
-                                String content = lastMsg['content'] ?? '';
-                                switch (typeStr) {
-                                  case 'image':
-                                    subtitle = 'Photo';
-                                    break;
-                                  case 'video':
-                                    subtitle = 'Video';
-                                    break;
-                                  case 'file':
-                                    subtitle = 'File';
-                                    break;
-                                  default:
-                                    subtitle = content;
+                                .snapshots(),
+                            builder: (context, typingSnap) {
+                              bool isTyping = false;
+                              if (typingSnap.hasData && typingSnap.data!.data() != null) {
+                                final data = typingSnap.data!.data() as Map<String, dynamic>;
+                                if (data['typingStatus'] != null) {
+                                  final typingStatus = Map<String, dynamic>.from(data['typingStatus']);
+                                  final typingFlag = typingStatus[user.uid] == true;
+                                  final ts = typingStatus['${user.uid}_ts'];
+                                  final isRecent = ts != null && ts is Timestamp && DateTime.now().difference(ts.toDate()).inSeconds < 8;
+                                  isTyping = typingFlag && isRecent;
                                 }
                               }
-                              final now = DateTime.now();
-                              final isRecentlyOnline = user.isOnline && now.difference(user.lastSeen).inSeconds < 30;
-                              return StreamBuilder<DocumentSnapshot>(
-                                stream: FirebaseFirestore.instance
+                              final isOnline = user.isOnline;
+                              return FutureBuilder<QuerySnapshot>(
+                                future: FirebaseFirestore.instance
                                     .collection('chats')
                                     .doc(chatDocId)
-                                    .snapshots(),
-                                builder: (context, typingSnap) {
-                                  bool isTyping = false;
-                                  if (typingSnap.hasData && typingSnap.data!.data() != null) {
-                                    final data = typingSnap.data!.data() as Map<String, dynamic>;
-                                    if (data['typingStatus'] != null) {
-                                      final typingStatus = Map<String, dynamic>.from(data['typingStatus']);
-                                      isTyping = typingStatus[user.uid] == true;
+                                    .collection('messages')
+                                    .orderBy('timestamp', descending: true)
+                                    .limit(1)
+                                    .get(),
+                                builder: (context, snapshot) {
+                                  // Hide chat if all messages are deleted for current user
+                                  if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+                                    final lastMsg = snapshot.data!.docs.first.data() as Map<String, dynamic>;
+                                    final deletedFor = lastMsg['deletedFor'] as List?;
+                                    if (deletedFor != null && deletedFor.contains(currentUser.uid)) {
+                                      return const SizedBox.shrink();
+                                    }
+                                  } else if (snapshot.hasData && snapshot.data!.docs.isEmpty) {
+                                    // No messages left, hide chat
+                                    return const SizedBox.shrink();
+                                  }
+                                  String subtitle = user.status ?? 'No status';
+                                  if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+                                    final lastMsg = snapshot.data!.docs.first.data() as Map<String, dynamic>;
+                                    String typeStr = lastMsg['type'] ?? 'text';
+                                    String content = lastMsg['content'] ?? '';
+                                    switch (typeStr) {
+                                      case 'image':
+                                        subtitle = 'Photo';
+                                        break;
+                                      case 'video':
+                                        subtitle = 'Video';
+                                        break;
+                                      case 'file':
+                                        subtitle = 'File';
+                                        break;
+                                      default:
+                                        subtitle = content;
                                     }
                                   }
                                   return ListTile(
@@ -245,7 +257,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                       height: 12,
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
-                                        color: isMuted ? Colors.grey : (isRecentlyOnline ? Colors.green : Colors.grey),
+                                        color: isMuted ? Colors.grey : (isOnline ? Colors.green : Colors.grey),
                                       ),
                                     ),
                                     onTap: () {
@@ -323,6 +335,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                           }
                                           await batch.commit();
                                           if (context.mounted) {
+                                            setState(() {}); // <-- Add this to update the UI
                                             ScaffoldMessenger.of(context).showSnackBar(
                                               const SnackBar(content: Text('Chat cleared.')),
                                             );

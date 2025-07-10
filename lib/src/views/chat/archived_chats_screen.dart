@@ -150,7 +150,25 @@ class _ArchivedChatsScreenState extends State<ArchivedChatsScreen> {
                           });
                         }
                         await batch.commit();
+                        // True deletion if both users have cleared
+                        final updatedSnapshot = await messagesRef.get();
+                        final otherUserId = user.uid;
+                        final currentUserId = widget.currentUser.uid;
+                        bool allCleared = updatedSnapshot.docs.isNotEmpty && updatedSnapshot.docs.every((doc) {
+                          final data = doc.data() as Map<String, dynamic>;
+                          final deletedFor = data['deletedFor'] as List?;
+                          return deletedFor != null && deletedFor.contains(currentUserId) && deletedFor.contains(otherUserId);
+                        });
+                        if (allCleared) {
+                          final deleteBatch = FirebaseFirestore.instance.batch();
+                          for (final doc in updatedSnapshot.docs) {
+                            deleteBatch.delete(doc.reference);
+                          }
+                          deleteBatch.delete(FirebaseFirestore.instance.collection('chats').doc(chatDocId));
+                          await deleteBatch.commit();
+                        }
                         if (context.mounted) {
+                          setState(() {}); // <-- Add this to update the UI
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(content: Text('Chat cleared.')),
                           );

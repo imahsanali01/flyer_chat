@@ -24,13 +24,16 @@ class UserModelAdapter extends TypeAdapter<UserModel> {
       status: fields[4] as String?,
       lastSeen: fields[5] as DateTime,
       isOnline: fields[6] as bool,
+      photoBase64: fields[7] as String?,
+      avatarType: fields[8] as String?,
+      avatarValue: fields[9] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, UserModel obj) {
     writer
-      ..writeByte(7)
+      ..writeByte(10)
       ..writeByte(0)
       ..write(obj.uid)
       ..writeByte(1)
@@ -44,7 +47,13 @@ class UserModelAdapter extends TypeAdapter<UserModel> {
       ..writeByte(5)
       ..write(obj.lastSeen)
       ..writeByte(6)
-      ..write(obj.isOnline);
+      ..write(obj.isOnline)
+      ..writeByte(7)
+      ..write(obj.photoBase64)
+      ..writeByte(8)
+      ..write(obj.avatarType)
+      ..writeByte(9)
+      ..write(obj.avatarValue);
   }
 
   @override
