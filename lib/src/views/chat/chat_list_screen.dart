@@ -21,6 +21,19 @@ class _ChatListScreenState extends State<ChatListScreen> {
   Set<String> _mutedChats = {};
   Set<String> _archivedChats = {};
 
+  void _openChatHeadsScreen(UserModel currentUser, List<UserModel> allUsers, List<String> recentChatIds) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ChatHeadsScreen(
+          currentUser: currentUser,
+          allUsers: allUsers,
+          recentChatIds: recentChatIds,
+        ),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -46,56 +59,21 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final currentUser = context.watch<AuthService>().currentUser;
+    final currentUser = context.read<AuthService>().currentUser;
     
     return Scaffold(
       appBar: AppBar(
-        title: !_isSearching
-            ? const Text('Chats')
-            : TextField(
-                autofocus: true,
-                decoration: InputDecoration(
-                  hintText: 'Search users...',
-                  border: InputBorder.none,
-                  hintStyle: TextStyle(
-                    color: Theme.of(context).brightness == Brightness.dark
-                        ? Colors.white70
-                        : Colors.black54,
-                  ),
-                  filled: true,
-                  fillColor: Theme.of(context).appBarTheme.backgroundColor ?? (Theme.of(context).brightness == Brightness.dark ? Colors.grey[900] : Colors.white),
-                ),
-                style: TextStyle(
-                  color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black,
-                  fontSize: 18,
-                ),
-                cursorColor: Theme.of(context).colorScheme.primary,
-                onChanged: (value) {
-                  setState(() {
-                    _searchQuery = value.trim().toLowerCase();
-                  });
-                },
-              ),
+        title: const Text('Chats'),
         actions: [
-          if (!_isSearching)
-            IconButton(
-              icon: const Icon(Icons.search),
-              onPressed: () {
-                setState(() {
-                  _isSearching = true;
-                });
-              },
-            ),
-          if (_isSearching)
-            IconButton(
-              icon: const Icon(Icons.close),
-              onPressed: () {
-                setState(() {
-                  _isSearching = false;
-                  _searchQuery = '';
-                });
-              },
-            ),
+          IconButton(
+            icon: Icon(_isSearching ? Icons.close : Icons.search),
+            onPressed: () {
+              setState(() {
+                _isSearching = !_isSearching;
+                if (!_isSearching) _searchQuery = '';
+              });
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () {
@@ -115,7 +93,55 @@ class _ChatListScreenState extends State<ChatListScreen> {
           // ),
         ],
       ),
-      body: StreamBuilder<QuerySnapshot>(
+      floatingActionButton: currentUser == null
+          ? null
+          : FutureBuilder<QuerySnapshot>(
+              future: FirebaseFirestore.instance.collection('users').get(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) return const SizedBox.shrink();
+                final allUsers = snapshot.data!.docs
+                    .map((doc) => UserModel.fromMap(doc.data() as Map<String, dynamic>))
+                    .where((u) => u.uid != currentUser.uid)
+                    .toList();
+                // Get recent chat IDs (chats with at least one message not deleted for current user)
+                return StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance.collection('chats').snapshots(),
+                  builder: (context, chatSnap) {
+                    List<String> recentChatIds = [];
+                    if (chatSnap.hasData) {
+                      for (final doc in chatSnap.data!.docs) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        final participants = List<String>.from(data['participants'] ?? []);
+                        if (participants.contains(currentUser.uid)) {
+                          recentChatIds.add(doc.id);
+                        }
+                      }
+                    }
+                    return FloatingActionButton(
+                      onPressed: () => _openChatHeadsScreen(currentUser, allUsers, recentChatIds),
+                      child: const Icon(Icons.chat_bubble),
+                    );
+                  },
+                );
+              },
+            ),
+      body: Column(
+        children: [
+          if (_isSearching)
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: TextField(
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: 'Search chats...',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.search),
+                ),
+                onChanged: (value) => setState(() => _searchQuery = value.trim().toLowerCase()),
+              ),
+            ),
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('users')
                   .where('uid', isNotEqualTo: currentUser?.uid)
@@ -380,9 +406,118 @@ class _ChatListScreenState extends State<ChatListScreen> {
                   ),
                 );
               },
-            ));
-      
-    
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class ChatHeadsScreen extends StatefulWidget {
+  final UserModel currentUser;
+  final List<UserModel> allUsers;
+  final List<String> recentChatIds;
+  const ChatHeadsScreen({super.key, required this.currentUser, required this.allUsers, required this.recentChatIds});
+
+  @override
+  State<ChatHeadsScreen> createState() => _ChatHeadsScreenState();
+}
+
+class _ChatHeadsScreenState extends State<ChatHeadsScreen> {
+  String _searchQuery = '';
+  bool _showSearch = false;
+
+  @override
+  Widget build(BuildContext context) {
+    // Recent users (from recentChatIds)
+    final recentUsers = widget.allUsers.where((u) => widget.recentChatIds.any((id) => id.contains(u.uid))).toList();
+    // Other users
+    final otherUsers = widget.allUsers.where((u) => !widget.recentChatIds.any((id) => id.contains(u.uid))).toList();
+    // Filter by search
+    final filteredRecent = recentUsers.where((u) => u.displayName.toLowerCase().contains(_searchQuery)).toList();
+    final filteredOthers = otherUsers.where((u) => u.displayName.toLowerCase().contains(_searchQuery)).toList();
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Chat Heads'),
+        actions: [
+          IconButton(
+            icon: Icon(_showSearch ? Icons.close : Icons.search),
+            onPressed: () {
+              setState(() {
+                _showSearch = !_showSearch;
+                if (!_showSearch) _searchQuery = '';
+              });
+            },
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          if (_showSearch)
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: TextField(
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: 'Search users...',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.search),
+                ),
+                onChanged: (value) => setState(() => _searchQuery = value.trim().toLowerCase()),
+              ),
+            ),
+          Expanded(
+            child: ListView(
+              children: [
+                if (filteredRecent.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Text('Recent', style: Theme.of(context).textTheme.titleMedium),
+                  ),
+                ...filteredRecent.map((user) => ListTile(
+                      leading: _buildUserAvatar(user, context),
+                      title: Text(user.displayName),
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ChatScreen(
+                              currentUser: widget.currentUser,
+                              otherUser: user,
+                            ),
+                          ),
+                        );
+                      },
+                    )),
+                if (filteredOthers.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Text('All Users', style: Theme.of(context).textTheme.titleMedium),
+                  ),
+                ...filteredOthers.map((user) => ListTile(
+                      leading: _buildUserAvatar(user, context),
+                      title: Text(user.displayName),
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ChatScreen(
+                              currentUser: widget.currentUser,
+                              otherUser: user,
+                            ),
+                          ),
+                        );
+                      },
+                    )),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
