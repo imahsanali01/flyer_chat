@@ -327,46 +327,46 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                         ),
                                       );
                                       if (action == 'clear') {
-                                        final confirm = await showDialog<bool>(
-                                          context: context,
-                                          builder: (context) => AlertDialog(
-                                            title: const Text('Clear Chat?'),
-                                            content: const Text('Are you sure you want to clear your side of this chat? This cannot be undone.'),
-                                            actions: [
-                                              TextButton(
-                                                onPressed: () => Navigator.pop(context, false),
-                                                child: const Text('Cancel'),
-                                              ),
-                                              TextButton(
-                                                onPressed: () => Navigator.pop(context, true),
-                                                child: const Text('Clear'),
-                                              ),
-                                            ],
-                                          ),
-                                        );
-                                        if (confirm == true) {
-                                          // Clear chat for current user only
-                                          final chatId = [currentUser!.uid, user.uid]..sort();
-                                          final chatDocId = chatId.join('_');
-                                          final messagesRef = FirebaseFirestore.instance
-                                              .collection('chats')
-                                              .doc(chatDocId)
-                                              .collection('messages');
-                                          final batch = FirebaseFirestore.instance.batch();
-                                          final snapshot = await messagesRef.get();
-                                          for (final doc in snapshot.docs) {
-                                            batch.update(doc.reference, {
-                                              'deletedFor': FieldValue.arrayUnion([currentUser.uid])
-                                            });
-                                          }
-                                          await batch.commit();
-                                          if (context.mounted) {
-                                            setState(() {}); // <-- Add this to update the UI
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              const SnackBar(content: Text('Chat cleared.')),
-                                            );
-                                          }
-                                        }
+                                        // final confirm = await showDialog<bool>(
+                                        //   context: context,
+                                        //   builder: (context) => AlertDialog(
+                                        //     title: const Text('Clear Chat?'),
+                                        //     content: const Text('Are you sure you want to clear your side of this chat? This cannot be undone.'),
+                                        //     actions: [
+                                        //       TextButton(
+                                        //         onPressed: () => Navigator.pop(context, false),
+                                        //         child: const Text('Cancel'),
+                                        //       ),
+                                        //       TextButton(
+                                        //         onPressed: () => Navigator.pop(context, true),
+                                        //         child: const Text('Clear'),
+                                        //       ),
+                                        //     ],
+                                        //   ),
+                                        // );
+                                        // if (confirm == true) {
+                                        //   // Clear chat for current user only
+                                        //   final chatId = [currentUser!.uid, user.uid]..sort();
+                                        //   final chatDocId = chatId.join('_');
+                                        //   final messagesRef = FirebaseFirestore.instance
+                                        //       .collection('chats')
+                                        //       .doc(chatDocId)
+                                        //       .collection('messages');
+                                        //   final batch = FirebaseFirestore.instance.batch();
+                                        //   final snapshot = await messagesRef.get();
+                                        //   for (final doc in snapshot.docs) {
+                                        //     batch.update(doc.reference, {
+                                        //       'deletedFor': FieldValue.arrayUnion([currentUser.uid])
+                                        //     });
+                                        //   }
+                                        //   await batch.commit();
+                                        //   if (context.mounted) {
+                                        //     setState(() {}); // <-- Add this to update the UI
+                                        //     ScaffoldMessenger.of(context).showSnackBar(
+                                        //       const SnackBar(content: Text('Chat cleared.')),
+                                        //     );
+                                        //   }
+                                        // }
                                       } else if (action == 'archive') {
                                         final userRef = FirebaseFirestore.instance.collection('users').doc(currentUser.uid);
                                         final newArchived = Set<String>.from(_archivedChats);

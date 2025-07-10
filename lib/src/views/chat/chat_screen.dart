@@ -134,23 +134,26 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final message = MessageModel(
-        id: const Uuid().v4(),
+      final messageId = const Uuid().v4();
+      final messageMap = MessageModel(
+        id: messageId,
         senderId: widget.currentUser.uid,
         receiverId: widget.otherUser.uid,
         content: content ?? '',
         type: type,
-        timestamp: DateTime.now(),
+        timestamp: DateTime.now(), // Placeholder, will be replaced by serverTimestamp
         replyTo: _replyTo?.id,
         metadata: metadata,
-      );
+      ).toMap();
+      // Overwrite the timestamp with serverTimestamp
+      messageMap['timestamp'] = FieldValue.serverTimestamp();
 
       await FirebaseFirestore.instance
           .collection('chats')
           .doc(_getChatId())
           .collection('messages')
-          .doc(message.id)
-          .set(message.toMap());
+          .doc(messageId)
+          .set(messageMap);
 
       _messageController.clear();
       _replyTo = null;
@@ -423,13 +426,13 @@ class _ChatScreenState extends State<ChatScreen> {
                                   ),
                                 ),
                                 const Divider(),
-                                ListTile(
-                                  leading: const Icon(Icons.delete_outline, color: Colors.red),
-                                  title: const Text('Clear Chat', style: TextStyle(color: Colors.red)),
-                                  onTap: () async {
-                                    Navigator.pop(context, 'clear');
-                                  },
-                                ),
+                                // ListTile(
+                                //   leading: const Icon(Icons.delete_outline, color: Colors.red),
+                                //   title: const Text('Clear Chat', style: TextStyle(color: Colors.red)),
+                                //   onTap: () async {
+                                //     Navigator.pop(context, 'clear');
+                                //   },
+                                // ),
                                 // Archive
                                 ListTile(
                                   leading: Icon(_isArchived ? Icons.unarchive : Icons.archive_outlined),
@@ -465,26 +468,26 @@ class _ChatScreenState extends State<ChatScreen> {
                           ),
                         );
                         if (action == 'clear') {
-                          final confirm = await showDialog<bool>(
-                            context: context,
-                            builder: (context) => AlertDialog(
-                              title: const Text('Clear Chat?'),
-                              content: const Text('Are you sure you want to clear your side of this chat? This cannot be undone.'),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context, false),
-                                  child: const Text('Cancel'),
-                                ),
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context, true),
-                                  child: const Text('Clear'),
-                                ),
-                              ],
-                            ),
-                          );
-                          if (confirm == true) {
-                            await _clearChatForCurrentUser();
-                          }
+                          // final confirm = await showDialog<bool>(
+                          //   context: context,
+                          //   builder: (context) => AlertDialog(
+                          //     title: const Text('Clear Chat?'),
+                          //     content: const Text('Are you sure you want to clear your side of this chat? This cannot be undone.'),
+                          //     actions: [
+                          //       TextButton(
+                          //         onPressed: () => Navigator.pop(context, false),
+                          //         child: const Text('Cancel'),
+                          //       ),
+                          //       TextButton(
+                          //         onPressed: () => Navigator.pop(context, true),
+                          //         child: const Text('Clear'),
+                          //       ),
+                          //     ],
+                          //   ),
+                          // );
+                          // if (confirm == true) {
+                          //   await _clearChatForCurrentUser();
+                          // }
                         } else if (action == 'archive') {
                           final userRef = FirebaseFirestore.instance.collection('users').doc(widget.currentUser.uid);
                           final userDoc = await userRef.get();
@@ -726,8 +729,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           itemBuilder: (context, index) {
                             final message = visibleMessages[index];
                             final isMe = message.senderId == widget.currentUser.uid;
-                            final originalIndex = messages.indexWhere((m) => m.id == message.id);
-                            final previousMessage = originalIndex > 0 ? messages[originalIndex - 1] : null;
+                            final previousMessage = index > 0 ? visibleMessages[index - 1] : null;
 
                             // Collect all media messages and find the index of this message in that list
                             final mediaMessages = visibleMessages

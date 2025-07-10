@@ -85,6 +85,16 @@ class MessageModel {
   });
 
   factory MessageModel.fromMap(Map<String, dynamic> map) {
+    DateTime timestamp;
+    if (map['timestamp'] == null) {
+      timestamp = DateTime.now(); // fallback for pending serverTimestamp
+    } else if (map['timestamp'] is Timestamp) {
+      timestamp = (map['timestamp'] as Timestamp).toDate();
+    } else if (map['timestamp'] is DateTime) {
+      timestamp = map['timestamp'] as DateTime;
+    } else {
+      timestamp = DateTime.now();
+    }
     return MessageModel(
       id: map['id'] as String,
       senderId: map['senderId'] as String,
@@ -93,7 +103,7 @@ class MessageModel {
       type: MessageType.values.firstWhere(
         (e) => e.toString() == 'MessageType.${map['type']}',
       ),
-      timestamp: (map['timestamp'] as Timestamp).toDate(),
+      timestamp: timestamp,
       isRead: map['isRead'] as bool? ?? false,
       metadata: map['metadata'] as Map<String, dynamic>?,
       replyTo: map['replyTo'] as String?,

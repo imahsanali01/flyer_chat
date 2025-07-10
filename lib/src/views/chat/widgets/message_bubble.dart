@@ -330,8 +330,11 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
     return Padding(
       padding: EdgeInsets.only(
         bottom: 1.0,
-        // Add extra top padding if previous message was from different sender
-        top: (widget.previousMessage != null && widget.previousMessage!.senderId != message.senderId) ? 8.0 : 1.0,
+        // Add extra top padding if previous message was from different sender or time gap > 2 minutes
+        top: (widget.previousMessage != null && (
+          widget.previousMessage!.senderId != message.senderId ||
+          message.timestamp.difference(widget.previousMessage!.timestamp).inMinutes > 2
+        )) ? 8.0 : 1.0,
         left: isMe ? 48.0 : 8.0,
         right: isMe ? 8.0 : 48.0,
       ),
