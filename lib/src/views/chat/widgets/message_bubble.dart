@@ -3,6 +3,8 @@ import 'package:flutter_chat_bubble/bubble_type.dart';
 import 'package:flutter_chat_bubble/clippers/chat_bubble_clipper_5.dart';
 import 'package:flutter_chat_bubble/chat_bubble.dart';
 import 'package:timeago/timeago.dart' as timeago;
+import 'dart:convert'; // Added for base64Decode
+import 'dart:typed_data'; // Added for Uint8List
 import '../../../models/message_model.dart';
 import 'media_preview.dart';
 
@@ -112,7 +114,7 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
           children: [
             if (message.type != MessageType.text)
               MediaPreview(message: message),
-            if (message.content.isNotEmpty)
+            if (message.type == MessageType.text && message.content.isNotEmpty)
               Row(
                 children: [
                   Flexible(
@@ -173,6 +175,39 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
 
     Widget replyPreview() {
       if (message.replyTo != null && replyContent != null) {
+        final repliedMessage = allMessages[message.replyTo!];
+        Widget contentWidget;
+        if (repliedMessage != null && repliedMessage.type == MessageType.image) {
+          Uint8List? imageBytes;
+          if (repliedMessage.content.isNotEmpty) {
+            imageBytes = base64Decode(repliedMessage.content);
+          } else if (repliedMessage.metadata != null && repliedMessage.metadata?['base64'] != null) {
+            imageBytes = base64Decode(repliedMessage.metadata?['base64']);
+          }
+          contentWidget = imageBytes != null
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: Image.memory(
+                    imageBytes,
+                    width: 48,
+                    height: 48,
+                    fit: BoxFit.cover,
+                  ),
+                )
+              : const Icon(Icons.broken_image, size: 32);
+        } else {
+          contentWidget = Text(
+            replyContent!,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13, 
+              color: isMe 
+                  ? Colors.white70 
+                  : (Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black87),
+            ),
+          );
+        }
         return Container(
           // No margin, so it's inside the bubble
           padding: const EdgeInsets.only(top: 4, bottom: 4, left: 12, right: 0),
@@ -205,17 +240,7 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
                 ),
               ),
               const SizedBox(height: 2),
-              Text(
-                replyContent!,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 13, 
-                  color: isMe 
-                      ? Colors.white70 
-                      : (Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black87),
-                ),
-              ),
+              contentWidget,
               const SizedBox(height: 4),
               Container(
                 height: 1,

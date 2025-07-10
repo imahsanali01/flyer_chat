@@ -160,46 +160,70 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _handleImageSelection() async {
-    final url = await _mediaService.uploadImage(
-      userId: widget.currentUser.uid,
-      source: ImageSource.gallery,
-      isMessage: true,
-    );
-
-    if (url != null) {
-      await _sendMessage(
-        content: url,
-        type: MessageType.image,
+    setState(() => _isLoading = true);
+    final result = await _mediaService.pickAndEncodeImage(isMessage: true);
+    setState(() => _isLoading = false);
+    if (result == null) return;
+    if (result['error'] != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result['error'])),
       );
+      return;
     }
+    await _sendMessage(
+      content: result['base64'],
+      type: MessageType.image,
+      metadata: {
+        'name': result['name'],
+        'type': result['type'],
+        'size': result['size'],
+      },
+    );
   }
 
   Future<void> _handleVideoSelection() async {
-    final url = await _mediaService.uploadVideo(
-      userId: widget.currentUser.uid,
-      source: ImageSource.gallery,
-    );
-
-    if (url != null) {
-      await _sendMessage(
-        content: url,
-        type: MessageType.video,
+    setState(() => _isLoading = true);
+    final result = await _mediaService.pickAndEncodeVideo();
+    setState(() => _isLoading = false);
+    if (result == null) return;
+    if (result['error'] != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result['error'])),
       );
+      return;
     }
+    await _sendMessage(
+      content: result['base64'],
+      type: MessageType.video,
+      metadata: {
+        'name': result['name'],
+        'type': result['type'],
+        'size': result['size'],
+      },
+    );
   }
 
   Future<void> _handleFileSelection() async {
-    final fileData = await _mediaService.uploadFile(
-      userId: widget.currentUser.uid,
-    );
-
-    if (fileData != null) {
-      await _sendMessage(
-        content: fileData['url']!,
-        type: MessageType.file,
-        metadata: fileData,
+    setState(() => _isLoading = true);
+    final result = await _mediaService.pickAndEncodeFile();
+    setState(() => _isLoading = false);
+    if (result == null) return;
+    if (result['error'] != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result['error'])),
       );
+      return;
     }
+    await _sendMessage(
+      content: '',
+      type: MessageType.file,
+      metadata: {
+        'base64': result['base64'],
+        'name': result['name'],
+        'type': result['type'],
+        'size': result['size'],
+      },
+    );
   }
 
   void _scrollToBottom() {
@@ -258,6 +282,25 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  Future<void> _clearChatForCurrentUser() async {
+    final chatId = _getChatId();
+    final userId = widget.currentUser.uid;
+    final messagesRef = FirebaseFirestore.instance
+        .collection('chats')
+        .doc(chatId)
+        .collection('messages');
+    final batch = FirebaseFirestore.instance.batch();
+    final snapshot = await messagesRef.get();
+    for (final doc in snapshot.docs) {
+      // Mark as deleted for this user only (add a deletedFor field)
+      batch.update(doc.reference, {
+        'deletedFor': FieldValue.arrayUnion([userId])
+      });
+    }
+    await batch.commit();
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -281,42 +324,118 @@ class _ChatScreenState extends State<ChatScreen> {
         floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
         appBar: AppBar(
           title: !_isSearchingMessages
-              ? Row(
-                  children: [
-                    _buildUserAvatar(widget.otherUser, context, radius: 18, fontSize: 18),
-                    const SizedBox(width: 12),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(widget.otherUser.displayName, style: const TextStyle(fontSize: 18)),
-                        StreamBuilder<DocumentSnapshot>(
-                          stream: FirebaseFirestore.instance
-                              .collection('users')
-                              .doc(widget.otherUser.uid)
-                              .snapshots(),
-                          builder: (context, snapshot) {
-                            bool isOnline = false;
-                            if (snapshot.hasData && snapshot.data!.data() != null) {
-                              final data = snapshot.data!.data() as Map<String, dynamic>;
-                              final lastSeen = data['lastSeen'] as Timestamp?;
-                              final isOnlineStatus = data['isOnline'] as bool? ?? false;
-                              if (lastSeen != null) {
-                                final now = DateTime.now();
-                                isOnline = isOnlineStatus && now.difference(lastSeen.toDate()).inSeconds < 30;
-                              }
-                            }
-                            return Text(
-                              isOnline ? 'Online' : 'Offline',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: isOnline ? Colors.green : Colors.grey,
+              ? GestureDetector(
+                  onTap: () async {
+                    final action = await showModalBottomSheet<String>(
+                      context: context,
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                      ),
+                      builder: (context) => SafeArea(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ListTile(
+                              leading: _buildUserAvatar(widget.otherUser, context, radius: 24, fontSize: 22),
+                              title: Text(widget.otherUser.displayName, style: const TextStyle(fontSize: 18)),
+                              subtitle: StreamBuilder<DocumentSnapshot>(
+                                stream: FirebaseFirestore.instance
+                                    .collection('users')
+                                    .doc(widget.otherUser.uid)
+                                    .snapshots(),
+                                builder: (context, snapshot) {
+                                  bool isOnline = false;
+                                  if (snapshot.hasData && snapshot.data!.data() != null) {
+                                    final data = snapshot.data!.data() as Map<String, dynamic>;
+                                    final lastSeen = data['lastSeen'] as Timestamp?;
+                                    final isOnlineStatus = data['isOnline'] as bool? ?? false;
+                                    if (lastSeen != null) {
+                                      final now = DateTime.now();
+                                      isOnline = isOnlineStatus && now.difference(lastSeen.toDate()).inSeconds < 30;
+                                    }
+                                  }
+                                  return Text(
+                                    isOnline ? 'Online' : 'Offline',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: isOnline ? Colors.green : Colors.grey,
+                                    ),
+                                  );
+                                },
                               ),
-                            );
-                          },
+                            ),
+                            const Divider(),
+                            ListTile(
+                              leading: const Icon(Icons.delete_outline, color: Colors.red),
+                              title: const Text('Clear Chat', style: TextStyle(color: Colors.red)),
+                              onTap: () async {
+                                Navigator.pop(context, 'clear');
+                              },
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                  ],
+                      ),
+                    );
+                    if (action == 'clear') {
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Clear Chat?'),
+                          content: const Text('Are you sure you want to clear your side of this chat? This cannot be undone.'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('Cancel'),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text('Clear'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirm == true) {
+                        await _clearChatForCurrentUser();
+                      }
+                    }
+                  },
+                  child: Row(
+                    children: [
+                      _buildUserAvatar(widget.otherUser, context, radius: 18, fontSize: 18),
+                      const SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(widget.otherUser.displayName, style: const TextStyle(fontSize: 18)),
+                          StreamBuilder<DocumentSnapshot>(
+                            stream: FirebaseFirestore.instance
+                                .collection('users')
+                                .doc(widget.otherUser.uid)
+                                .snapshots(),
+                            builder: (context, snapshot) {
+                              bool isOnline = false;
+                              if (snapshot.hasData && snapshot.data!.data() != null) {
+                                final data = snapshot.data!.data() as Map<String, dynamic>;
+                                final lastSeen = data['lastSeen'] as Timestamp?;
+                                final isOnlineStatus = data['isOnline'] as bool? ?? false;
+                                if (lastSeen != null) {
+                                  final now = DateTime.now();
+                                  isOnline = isOnlineStatus && now.difference(lastSeen.toDate()).inSeconds < 30;
+                                }
+                              }
+                              return Text(
+                                isOnline ? 'Online' : 'Offline',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: isOnline ? Colors.green : Colors.grey,
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 )
               : TextField(
                   autofocus: true,
@@ -439,13 +558,18 @@ class _ChatScreenState extends State<ChatScreen> {
                   final filteredMessages = _messageSearchQuery.isEmpty
                       ? messages
                       : messages.where((m) => m.content.toLowerCase().contains(_messageSearchQuery)).toList();
+                  final visibleMessages = filteredMessages.where((m) {
+                    final meta = m.metadata;
+                    final deletedFor = meta != null ? meta['deletedFor'] as List? : null;
+                    return deletedFor == null || !deletedFor.contains(widget.currentUser.uid);
+                  }).toList();
 
                   // Mark messages as read when messages are loaded
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     _markMessagesAsRead();
                   });
 
-                  if (filteredMessages.isEmpty) {
+                  if (visibleMessages.isEmpty) {
                     return const Center(
                       child: Text('No messages found'),
                     );
@@ -472,9 +596,9 @@ class _ChatScreenState extends State<ChatScreen> {
                   return ListView.builder(
                     controller: _scrollController,
                     padding: const EdgeInsets.all(8.0),
-                    itemCount: filteredMessages.length,
+                    itemCount: visibleMessages.length,
                     itemBuilder: (context, index) {
-                      final message = filteredMessages[index];
+                      final message = visibleMessages[index];
                       final isMe = message.senderId == widget.currentUser.uid;
                       final originalIndex = messages.indexWhere((m) => m.id == message.id);
                       final previousMessage = originalIndex > 0 ? messages[originalIndex - 1] : null;

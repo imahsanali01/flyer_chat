@@ -3,6 +3,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as path;
 import 'package:uuid/uuid.dart';
+import 'package:file_picker/file_picker.dart';
+import 'dart:convert';
 
 class MediaService {
   final FirebaseStorage _storage = FirebaseStorage.instance;
@@ -110,6 +112,77 @@ class MediaService {
       await ref.delete();
     } catch (e) {
       print('Error deleting file: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>?> pickAndEncodeImage({
+    required bool isMessage,
+  }) async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 70,
+      );
+      if (image == null) return null;
+      final bytes = await File(image.path).readAsBytes();
+      if (bytes.length > 900 * 1024) {
+        return {'error': 'Image too large (max 900KB)'};
+      }
+      final base64 = base64Encode(bytes);
+      return {
+        'base64': base64,
+        'name': path.basename(image.path),
+        'type': path.extension(image.path),
+        'size': bytes.length,
+      };
+    } catch (e) {
+      print('Error picking/encoding image: $e');
+      return {'error': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>?> pickAndEncodeVideo() async {
+    try {
+      final XFile? video = await _imagePicker.pickVideo(
+        source: ImageSource.gallery,
+        maxDuration: const Duration(minutes: 5),
+      );
+      if (video == null) return null;
+      final bytes = await File(video.path).readAsBytes();
+      if (bytes.length > 900 * 1024) {
+        return {'error': 'Video too large (max 900KB)'};
+      }
+      final base64 = base64Encode(bytes);
+      return {
+        'base64': base64,
+        'name': path.basename(video.path),
+        'type': path.extension(video.path),
+        'size': bytes.length,
+      };
+    } catch (e) {
+      print('Error picking/encoding video: $e');
+      return {'error': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>?> pickAndEncodeFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles();
+      if (result == null || result.files.isEmpty) return null;
+      final file = result.files.first;
+      if (file.size > 900 * 1024) {
+        return {'error': 'File too large (max 900KB)'};
+      }
+      final base64 = base64Encode(file.bytes ?? await File(file.path!).readAsBytes());
+      return {
+        'base64': base64,
+        'name': file.name,
+        'type': file.extension ?? '',
+        'size': file.size,
+      };
+    } catch (e) {
+      print('Error picking/encoding file: $e');
+      return {'error': e.toString()};
     }
   }
 } 

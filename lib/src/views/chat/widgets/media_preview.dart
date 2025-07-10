@@ -3,6 +3,12 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import '../../../models/message_model.dart';
+import 'dart:convert';
+import 'dart:typed_data';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:flutter/foundation.dart';
+import 'package:photo_view/photo_view.dart';
 
 class MediaPreview extends StatefulWidget {
   final MessageModel message;
@@ -36,7 +42,18 @@ class _MediaPreviewState extends State<MediaPreview> {
   }
 
   Future<void> _initializeVideo() async {
-    _videoController = VideoPlayerController.network(widget.message.content);
+    Uint8List? videoBytes;
+    if (widget.message.content.isNotEmpty) {
+      videoBytes = base64Decode(widget.message.content);
+    } else if (widget.message.metadata != null && widget.message.metadata?['base64'] != null) {
+      videoBytes = base64Decode(widget.message.metadata?['base64']);
+    }
+    if (videoBytes == null) return;
+    // Write bytes to a temp file
+    final tempDir = await getTemporaryDirectory();
+    final tempFile = await File('${tempDir.path}/${widget.message.metadata?['name'] ?? 'video.mp4'}').create();
+    await tempFile.writeAsBytes(videoBytes, flush: true);
+    _videoController = VideoPlayerController.file(tempFile);
     await _videoController!.initialize();
     _chewieController = ChewieController(
       videoPlayerController: _videoController!,
@@ -58,18 +75,51 @@ class _MediaPreviewState extends State<MediaPreview> {
   Widget build(BuildContext context) {
     switch (widget.message.type) {
       case MessageType.image:
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: CachedNetworkImage(
-            imageUrl: widget.message.content,
-            placeholder: (context, url) => const SizedBox(
+        Uint8List? imageBytes;
+        if (widget.message.content.isNotEmpty) {
+          imageBytes = base64Decode(widget.message.content);
+        } else if (widget.message.metadata != null && widget.message.metadata?['base64'] != null) {
+          imageBytes = base64Decode(widget.message.metadata?['base64']);
+        }
+        if (imageBytes == null) return const Icon(Icons.error);
+        return GestureDetector(
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => Scaffold(
+                  backgroundColor: Colors.black,
+                  body: SafeArea(
+                    child: Stack(
+                      children: [
+                        PhotoView(
+                          imageProvider: MemoryImage(imageBytes!),
+                          backgroundDecoration: const BoxDecoration(color: Colors.black),
+                          minScale: PhotoViewComputedScale.contained,
+                          maxScale: PhotoViewComputedScale.covered * 3.0,
+                        ),
+                        Positioned(
+                          top: 16,
+                          left: 8,
+                          child: IconButton(
+                            icon: const Icon(Icons.close, color: Colors.white, size: 32),
+                            onPressed: () => Navigator.of(context).pop(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.memory(
+              imageBytes,
+              fit: BoxFit.cover,
+              width: double.infinity,
               height: 200,
-              child: Center(child: CircularProgressIndicator()),
             ),
-            errorWidget: (context, url, error) => const Icon(Icons.error),
-            fit: BoxFit.cover,
-            width: double.infinity,
-            height: 200,
           ),
         );
 
@@ -105,15 +155,53 @@ class _MediaPreviewState extends State<MediaPreview> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      metadata['name'] as String,
+                      metadata['name'] != null ? metadata['name'] as String : 'File',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                     Text(
-                      '${metadata['size']} bytes',
+                      metadata['size'] != null ? '${metadata['size']} bytes' : '',
                       style: const TextStyle(fontSize: 12),
                     ),
+                    if (metadata['base64'] != null)
+                      TextButton.icon(
+                        icon: const Icon(Icons.download),
+                        label: const Text('Download'),
+                        onPressed: () async {
+                          try {
+                            final bytes = base64Decode(metadata['base64']);
+                            String fileName = metadata['name'] ?? 'file';
+                            if (kIsWeb) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('File download not supported on web.')),
+                              );
+                              return;
+                            }
+                            Directory? dir;
+                            if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+                              dir = await getExternalStorageDirectory();
+                              if (dir == null) {
+                                dir = await getApplicationDocumentsDirectory();
+                              }
+                            } else {
+                              dir = await getDownloadsDirectory();
+                              if (dir == null) {
+                                dir = await getApplicationDocumentsDirectory();
+                              }
+                            }
+                            final file = File('${dir!.path}/$fileName');
+                            await file.writeAsBytes(bytes, flush: true);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('File saved to ${file.path}')),
+                            );
+                          } catch (e) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Failed to save file: $e')),
+                            );
+                          }
+                        },
+                      ),
                   ],
                 ),
               ),
