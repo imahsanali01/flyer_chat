@@ -97,6 +97,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     }
 
+    Future<void> _editDisplayName() async {
+      final controller = TextEditingController(text: user?.displayName ?? '');
+      final newName = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Edit Display Name'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(
+              labelText: 'Display Name',
+              border: OutlineInputBorder(),
+            ),
+            autofocus: true,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, controller.text.trim()),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      );
+      if (newName != null && newName.isNotEmpty && newName != user?.displayName) {
+        setState(() => _isLoading = true);
+        try {
+          await FirebaseFirestore.instance.collection('users').doc(user!.uid).update({'displayName': newName});
+          await authService.reloadUserData(user.uid);
+          setState(() {});
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Display name updated.')));
+        } catch (e) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to update display name: $e')));
+        } finally {
+          setState(() => _isLoading = false);
+        }
+      }
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Settings'),
@@ -139,7 +180,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 26),
           ],
-          // Theme mode switch
+        
+          if (user != null) ...[
+            const SizedBox(height: 16),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.person),
+                title: const Text('Display Name'),
+                subtitle: Text(user.displayName, style: const TextStyle(fontWeight: FontWeight.w500)),
+                trailing: const Icon(Icons.edit),
+                onTap: _isLoading ? null : _editDisplayName,
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+            // Theme mode switch
           Card(
             child: ListTile(
               leading: const Icon(Icons.brightness_6),
