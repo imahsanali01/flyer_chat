@@ -1755,7 +1755,10 @@ class _BackgroundPickerDialogState extends State<_BackgroundPickerDialog> {
           TextButton(
             child: const Text('Select'),
             onPressed: () {
-              setState(() => _selectedColor = pickerColor);
+              setState(() {
+                _selectedColor = pickerColor;
+                _selectedImage = null;
+              });
               Navigator.of(context).pop();
             },
           ),
@@ -1769,13 +1772,23 @@ class _BackgroundPickerDialogState extends State<_BackgroundPickerDialog> {
     final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 60);
     if (picked != null) {
       final bytes = await picked.readAsBytes();
-      setState(() => _selectedImage = bytes);
+      setState(() {
+        _selectedImage = bytes;
+        _selectedColor = null;
+      });
     }
+  }
+
+  Future<void> _setDefault() async {
+    setState(() {
+      _selectedColor = null;
+      _selectedImage = null;
+    });
   }
 
   Future<void> _saveBackground() async {
     setState(() => _isLoading = true);
-    Map<String, dynamic> bg;
+    Map<String, dynamic>? bg;
     if (_selectedImage != null) {
       bg = {
         'type': 'image',
@@ -1786,13 +1799,16 @@ class _BackgroundPickerDialogState extends State<_BackgroundPickerDialog> {
         'type': 'color',
         'value': '#${_selectedColor!.value.toRadixString(16).padLeft(8, '0').substring(2)}',
       };
+    } // else: default, so remove background
+    if (bg != null) {
+      await FirebaseFirestore.instance.collection('chats').doc(widget.chatId).set({
+        'background': bg,
+      }, SetOptions(merge: true));
     } else {
-      setState(() => _isLoading = false);
-      return;
+      await FirebaseFirestore.instance.collection('chats').doc(widget.chatId).set({
+        'background': FieldValue.delete(),
+      }, SetOptions(merge: true));
     }
-    await FirebaseFirestore.instance.collection('chats').doc(widget.chatId).set({
-      'background': bg,
-    }, SetOptions(merge: true));
     // Send system message
     final userName = widget.currentUser.displayName;
     final systemMsg = 'Wallpaper updated by $userName';
@@ -1810,61 +1826,170 @@ class _BackgroundPickerDialogState extends State<_BackgroundPickerDialog> {
     Navigator.of(context).pop();
   }
 
+  Future<void> _setDefaultWithConfirmation() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset to Default?'),
+        content: const Text('Are you sure you want to reset the chat background to the default?'),
+        actions: [
+          TextButton(
+            child: const Text('Cancel'),
+            onPressed: () => Navigator.of(context).pop(false),
+          ),
+          ElevatedButton(
+            child: const Text('Reset'),
+            onPressed: () => Navigator.of(context).pop(true),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      setState(() {
+        _selectedColor = null;
+        _selectedImage = null;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Change Chat Background'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.color_lens),
-                  label: const Text('Pick Color'),
-                  onPressed: _pickColor,
+    final defaultColor = Theme.of(context).scaffoldBackgroundColor;
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      elevation: 8,
+      backgroundColor: Theme.of(context).dialogBackgroundColor,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 380),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Change Chat Background', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 18),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.color_lens),
+                      label: const Text('Pick Color'),
+                      style: ElevatedButton.styleFrom(shape: StadiumBorder()),
+                      onPressed: _pickColor,
+                    ),
+                    const SizedBox(width: 10),
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.image),
+                      label: const Text('Pick Image'),
+                      style: ElevatedButton.styleFrom(shape: StadiumBorder()),
+                      onPressed: _pickImage,
+                    ),
+                    const SizedBox(width: 10),
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Default'),
+                      style: ElevatedButton.styleFrom(shape: StadiumBorder()),
+                      onPressed: _setDefaultWithConfirmation,
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.image),
-                  label: const Text('Pick Image'),
-                  onPressed: _pickImage,
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            if (_selectedColor != null)
+              ),
+              const SizedBox(height: 24),
               Container(
-                width: 48,
-                height: 48,
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: _selectedColor,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.black12),
+                  color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[900] : Colors.grey[100],
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Default preview
+                    GestureDetector(
+                      onTap: _setDefaultWithConfirmation,
+                      child: Column(
+                        children: [
+                          Container(
+                            width: 56,
+                            height: 56,
+                            decoration: BoxDecoration(
+                              color: defaultColor,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.black12),
+                            ),
+                            child: const Center(child: Icon(Icons.format_paint, size: 28)),
+                          ),
+                          const SizedBox(height: 6),
+                          const Text('Default', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                        ],
+                      ),
+                    ),
+                    if (_selectedColor != null) ...[
+                      const SizedBox(width: 24),
+                      Column(
+                        children: [
+                          Container(
+                            width: 56,
+                            height: 56,
+                            decoration: BoxDecoration(
+                              color: _selectedColor,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.black12),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          const Text('Color', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                        ],
+                      ),
+                    ],
+                    if (_selectedImage != null) ...[
+                      const SizedBox(width: 24),
+                      Column(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.memory(_selectedImage!, width: 56, height: 56, fit: BoxFit.cover),
+                          ),
+                          const SizedBox(height: 6),
+                          const Text('Image', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                        ],
+                      ),
+                    ],
+                  ],
                 ),
               ),
-            if (_selectedImage != null)
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.memory(_selectedImage!, width: 48, height: 48, fit: BoxFit.cover),
-                ),
+              const SizedBox(height: 28),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    child: const Text('Cancel'),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                  const SizedBox(width: 12),
+                  ElevatedButton(
+                    child: _isLoading ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Save'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onPressed: _isLoading ? null : _saveBackground,
+                  ),
+                ],
               ),
-          ],
+            ],
+          ),
         ),
       ),
-      actions: [
-        TextButton(
-          child: const Text('Cancel'),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        ElevatedButton(
-          child: _isLoading ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Save'),
-          onPressed: _isLoading ? null : _saveBackground,
-        ),
-      ],
     );
   }
 } 

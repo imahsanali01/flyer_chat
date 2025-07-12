@@ -7,6 +7,7 @@ import '../../views/profile/settings_screen.dart';
 import 'chat_screen.dart';
 import 'dart:convert';
 import 'archived_chats_screen.dart';
+import 'package:intl/intl.dart';
 
 class ChatListScreen extends StatefulWidget {
   const ChatListScreen({super.key});
@@ -155,7 +156,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
                       isPersonalChat: true, // Add this flag to ChatScreen
                     ),
                   ),
-                );
+                ).then((_) {
+                  setState(() {}); // Refresh chat list after returning
+                });
               },
             ),
           Expanded(
@@ -259,161 +262,221 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                     .doc(chatDocId)
                                     .collection('messages')
                                     .orderBy('timestamp', descending: true)
-                                    .limit(1)
+                                    .limit(40)
                                     .get(),
                                 builder: (context, snapshot) {
                                   // Hide chat if all messages are deleted for current user
                                   if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
-                                    final lastMsg = snapshot.data!.docs.first.data() as Map<String, dynamic>;
+                                    final messages = snapshot.data!.docs.map((doc) => doc.data() as Map<String, dynamic>).toList();
+                                    final lastMsg = messages.first;
                                     final deletedFor = lastMsg['deletedFor'] as List?;
                                     if (deletedFor != null && deletedFor.contains(currentUser.uid)) {
                                       return const SizedBox.shrink();
                                     }
+                                    // Unread count
+                                    int unreadCount = messages.where((m) => m['receiverId'] == currentUser.uid && m['isRead'] == false).length;
+                                    // Last message time formatting
+                                    DateTime? lastTime;
+                                    if (lastMsg['timestamp'] is Timestamp) {
+                                      lastTime = (lastMsg['timestamp'] as Timestamp).toDate();
+                                    } else if (lastMsg['timestamp'] is DateTime) {
+                                      lastTime = lastMsg['timestamp'] as DateTime;
+                                    }
+                                    String timeStr = '';
+                                    if (lastTime != null) {
+                                      final now = DateTime.now();
+                                      final diff = now.difference(lastTime);
+                                      if (now.day == lastTime.day && now.month == lastTime.month && now.year == lastTime.year) {
+                                        timeStr = DateFormat('HH:mm').format(lastTime);
+                                      } else if (now.subtract(const Duration(days: 1)).day == lastTime.day && now.month == lastTime.month && now.year == lastTime.year) {
+                                        timeStr = 'Yesterday';
+                                      } else if (now.difference(lastTime).inDays < 7) {
+                                        timeStr = DateFormat('EEE').format(lastTime); // Mon, Tue, etc.
+                                      } else {
+                                        timeStr = DateFormat('dd/MM/yy').format(lastTime);
+                                      }
+                                    }
+                                    // Subtitle logic
+                                    String subtitle = user.status ?? 'No status';
+                                    if (lastMsg.isNotEmpty) {
+                                      String typeStr = lastMsg['type'] ?? 'text';
+                                      String content = lastMsg['content'] ?? '';
+                                      switch (typeStr) {
+                                        case 'image':
+                                          subtitle = 'Photo';
+                                          break;
+                                        case 'video':
+                                          subtitle = 'Video';
+                                          break;
+                                        case 'file':
+                                          subtitle = 'File';
+                                          break;
+                                        default:
+                                          subtitle = content;
+                                      }
+                                    }
+                                    // Online/offline dot
+                                    final now = DateTime.now();
+                                    final isRecentlyOnline = user.isOnline && now.difference(user.lastSeen).inSeconds < 30;
+                                    return ListTile(
+                                      leading: Stack(
+                                        children: [
+                                          _buildUserAvatar(user, context),
+                                          Positioned(
+                                            bottom: 2,
+                                            right: 2,
+                                            child: Container(
+                                              width: 12,
+                                              height: 12,
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                color: isRecentlyOnline ? Colors.green : Colors.grey,
+                                                border: Border.all(color: Colors.white, width: 2),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      title: Text(user.displayName),
+                                      subtitle: Text(isTyping ? 'Typing...' : subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                      trailing: Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                        children: [
+                                          if (timeStr.isNotEmpty)
+                                            Text(timeStr, style: TextStyle(fontSize: 12, color: unreadCount > 0 ? Theme.of(context).colorScheme.primary : Colors.grey)),
+                                          if (unreadCount > 0)
+                                            Container(
+                                              margin: const EdgeInsets.only(top: 4),
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: Theme.of(context).colorScheme.primary,
+                                                borderRadius: BorderRadius.circular(12),
+                                              ),
+                                              child: Text(
+                                                unreadCount.toString(),
+                                                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                      onTap: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) => ChatScreen(
+                                              currentUser: currentUser,
+                                              otherUser: user,
+                                            ),
+                                          ),
+                                        ).then((_) {
+                                          setState(() {}); // Refresh chat list after returning
+                                        });
+                                      },
+                                      onLongPress: () async {
+                                        final action = await showModalBottomSheet<String>(
+                                          context: context,
+                                          shape: const RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                                          ),
+                                          builder: (context) => SafeArea(
+                                            child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                ListTile(
+                                                  leading: const Icon(Icons.delete_outline, color: Colors.red),
+                                                  title: const Text('Clear Chat', style: TextStyle(color: Colors.red)),
+                                                  onTap: () => Navigator.pop(context, 'clear'),
+                                                ),
+                                                ListTile(
+                                                  leading: Icon(isArchived ? Icons.unarchive : Icons.archive_outlined),
+                                                  title: Text(isArchived ? 'Unarchive' : 'Archive'),
+                                                  onTap: () => Navigator.pop(context, 'archive'),
+                                                ),
+                                                ListTile(
+                                                  leading: Icon(isMuted ? Icons.notifications_active : Icons.notifications_off_outlined),
+                                                  title: Text(isMuted ? 'Unmute' : 'Mute'),
+                                                  onTap: () => Navigator.pop(context, 'mute'),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        );
+                                        if (action == 'clear') {
+                                          // final confirm = await showDialog<bool>(
+                                          //   context: context,
+                                          //   builder: (context) => AlertDialog(
+                                          //     title: const Text('Clear Chat?'),
+                                          //     content: const Text('Are you sure you want to clear your side of this chat? This cannot be undone.'),
+                                          //     actions: [
+                                          //       TextButton(
+                                          //         onPressed: () => Navigator.pop(context, false),
+                                          //         child: const Text('Cancel'),
+                                          //       ),
+                                          //       TextButton(
+                                          //         onPressed: () => Navigator.pop(context, true),
+                                          //         child: const Text('Clear'),
+                                          //       ),
+                                          //     ],
+                                          //   ),
+                                          // );
+                                          // if (confirm == true) {
+                                          //   // Clear chat for current user only
+                                          //   final chatId = [currentUser!.uid, user.uid]..sort();
+                                          //   final chatDocId = chatId.join('_');
+                                          //   final messagesRef = FirebaseFirestore.instance
+                                          //       .collection('chats')
+                                          //       .doc(chatDocId)
+                                          //       .collection('messages');
+                                          //   final batch = FirebaseFirestore.instance.batch();
+                                          //   final snapshot = await messagesRef.get();
+                                          //   for (final doc in snapshot.docs) {
+                                          //     batch.update(doc.reference, {
+                                          //       'deletedFor': FieldValue.arrayUnion([currentUser.uid])
+                                          //     });
+                                          //   }
+                                          //   await batch.commit();
+                                          //   if (context.mounted) {
+                                          //     setState(() {}); // <-- Add this to update the UI
+                                          //     ScaffoldMessenger.of(context).showSnackBar(
+                                          //       const SnackBar(content: Text('Chat cleared.')),
+                                          //     );
+                                          //   }
+                                          // }
+                                        } else if (action == 'archive') {
+                                          final userRef = FirebaseFirestore.instance.collection('users').doc(currentUser.uid);
+                                          final newArchived = Set<String>.from(_archivedChats);
+                                          if (isArchived) {
+                                            newArchived.remove(chatDocId);
+                                          } else {
+                                            newArchived.add(chatDocId);
+                                          }
+                                          await userRef.update({'archivedChats': newArchived.toList()});
+                                          setState(() => _archivedChats = newArchived);
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text(isArchived ? 'Chat archived.' : 'Chat unarchived.')),
+                                          );
+                                        } else if (action == 'mute') {
+                                          final userRef = FirebaseFirestore.instance.collection('users').doc(currentUser.uid);
+                                          final newMuted = Set<String>.from(_mutedChats);
+                                          if (isMuted) {
+                                            newMuted.remove(chatDocId);
+                                          } else {
+                                            newMuted.add(chatDocId);
+                                          }
+                                          await userRef.update({'mutedChats': newMuted.toList()});
+                                          setState(() => _mutedChats = newMuted);
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text(isMuted ? 'Chat unmuted.' : 'Chat muted.')),
+                                          );
+                                        }
+                                      },
+                                    );
                                   } else if (snapshot.hasData && snapshot.data!.docs.isEmpty) {
                                     // No messages left, hide chat
                                     return const SizedBox.shrink();
                                   }
-                                  String subtitle = user.status ?? 'No status';
-                                  if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
-                                    final lastMsg = snapshot.data!.docs.first.data() as Map<String, dynamic>;
-                                    String typeStr = lastMsg['type'] ?? 'text';
-                                    String content = lastMsg['content'] ?? '';
-                                    switch (typeStr) {
-                                      case 'image':
-                                        subtitle = 'Photo';
-                                        break;
-                                      case 'video':
-                                        subtitle = 'Video';
-                                        break;
-                                      case 'file':
-                                        subtitle = 'File';
-                                        break;
-                                      default:
-                                        subtitle = content;
-                                    }
-                                  }
-                                  return ListTile(
-                                    leading: _buildUserAvatar(user, context),
-                                    title: Text(user.displayName),
-                                    subtitle: Text(isTyping ? 'Typing...' : subtitle),
-                                    trailing: Container(
-                                      width: 12,
-                                      height: 12,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: isMuted ? Colors.grey : (isOnline ? Colors.green : Colors.grey),
-                                      ),
-                                    ),
-                                    onTap: () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) => ChatScreen(
-                                            currentUser: currentUser,
-                                            otherUser: user,
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                    onLongPress: () async {
-                                      final action = await showModalBottomSheet<String>(
-                                        context: context,
-                                        shape: const RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-                                        ),
-                                        builder: (context) => SafeArea(
-                                          child: Column(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              ListTile(
-                                                leading: const Icon(Icons.delete_outline, color: Colors.red),
-                                                title: const Text('Clear Chat', style: TextStyle(color: Colors.red)),
-                                                onTap: () => Navigator.pop(context, 'clear'),
-                                              ),
-                                              ListTile(
-                                                leading: Icon(isArchived ? Icons.unarchive : Icons.archive_outlined),
-                                                title: Text(isArchived ? 'Unarchive' : 'Archive'),
-                                                onTap: () => Navigator.pop(context, 'archive'),
-                                              ),
-                                              ListTile(
-                                                leading: Icon(isMuted ? Icons.notifications_active : Icons.notifications_off_outlined),
-                                                title: Text(isMuted ? 'Unmute' : 'Mute'),
-                                                onTap: () => Navigator.pop(context, 'mute'),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      );
-                                      if (action == 'clear') {
-                                        // final confirm = await showDialog<bool>(
-                                        //   context: context,
-                                        //   builder: (context) => AlertDialog(
-                                        //     title: const Text('Clear Chat?'),
-                                        //     content: const Text('Are you sure you want to clear your side of this chat? This cannot be undone.'),
-                                        //     actions: [
-                                        //       TextButton(
-                                        //         onPressed: () => Navigator.pop(context, false),
-                                        //         child: const Text('Cancel'),
-                                        //       ),
-                                        //       TextButton(
-                                        //         onPressed: () => Navigator.pop(context, true),
-                                        //         child: const Text('Clear'),
-                                        //       ),
-                                        //     ],
-                                        //   ),
-                                        // );
-                                        // if (confirm == true) {
-                                        //   // Clear chat for current user only
-                                        //   final chatId = [currentUser!.uid, user.uid]..sort();
-                                        //   final chatDocId = chatId.join('_');
-                                        //   final messagesRef = FirebaseFirestore.instance
-                                        //       .collection('chats')
-                                        //       .doc(chatDocId)
-                                        //       .collection('messages');
-                                        //   final batch = FirebaseFirestore.instance.batch();
-                                        //   final snapshot = await messagesRef.get();
-                                        //   for (final doc in snapshot.docs) {
-                                        //     batch.update(doc.reference, {
-                                        //       'deletedFor': FieldValue.arrayUnion([currentUser.uid])
-                                        //     });
-                                        //   }
-                                        //   await batch.commit();
-                                        //   if (context.mounted) {
-                                        //     setState(() {}); // <-- Add this to update the UI
-                                        //     ScaffoldMessenger.of(context).showSnackBar(
-                                        //       const SnackBar(content: Text('Chat cleared.')),
-                                        //     );
-                                        //   }
-                                        // }
-                                      } else if (action == 'archive') {
-                                        final userRef = FirebaseFirestore.instance.collection('users').doc(currentUser.uid);
-                                        final newArchived = Set<String>.from(_archivedChats);
-                                        if (isArchived) {
-                                          newArchived.remove(chatDocId);
-                                        } else {
-                                          newArchived.add(chatDocId);
-                                        }
-                                        await userRef.update({'archivedChats': newArchived.toList()});
-                                        setState(() => _archivedChats = newArchived);
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text(isArchived ? 'Chat archived.' : 'Chat unarchived.')),
-                                        );
-                                      } else if (action == 'mute') {
-                                        final userRef = FirebaseFirestore.instance.collection('users').doc(currentUser.uid);
-                                        final newMuted = Set<String>.from(_mutedChats);
-                                        if (isMuted) {
-                                          newMuted.remove(chatDocId);
-                                        } else {
-                                          newMuted.add(chatDocId);
-                                        }
-                                        await userRef.update({'mutedChats': newMuted.toList()});
-                                        setState(() => _mutedChats = newMuted);
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text(isMuted ? 'Chat unmuted.' : 'Chat muted.')),
-                                        );
-                                      }
-                                    },
-                                  );
+                                  return const SizedBox.shrink();
                                 },
                               );
                             },
