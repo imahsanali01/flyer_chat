@@ -23,6 +23,24 @@ class MessageInput extends StatefulWidget {
 }
 
 class _MessageInputState extends State<MessageInput> {
+  final FocusNode _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode.addListener(() {
+      if (_focusNode.hasFocus && widget.onEmojiPressed != null) {
+        widget.onEmojiPressed(); // This will toggle emoji picker, so only close if open
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -53,6 +71,7 @@ class _MessageInputState extends State<MessageInput> {
             ),
             Expanded(
               child: TextField(
+                focusNode: _focusNode,
                 controller: widget.controller,
                 decoration: const InputDecoration(
                   hintText: 'Type a message...',

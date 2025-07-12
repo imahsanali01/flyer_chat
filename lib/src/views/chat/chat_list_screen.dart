@@ -140,6 +140,24 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 onChanged: (value) => setState(() => _searchQuery = value.trim().toLowerCase()),
               ),
             ),
+          // Personal chat tile at the top
+          if (currentUser != null)
+            ListTile(
+              leading: _buildUserAvatar(currentUser, context),
+              title: const Text('Me', style: TextStyle(fontWeight: FontWeight.bold)),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ChatScreen(
+                      currentUser: currentUser,
+                      otherUser: currentUser,
+                      isPersonalChat: true, // Add this flag to ChatScreen
+                    ),
+                  ),
+                );
+              },
+            ),
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance

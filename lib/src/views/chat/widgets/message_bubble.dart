@@ -17,6 +17,11 @@ class MessageBubble extends StatefulWidget {
   final MessageModel? previousMessage;
   final List<MessageModel>? mediaMessages;
   final int? mediaIndex;
+  // Multi-select
+  final bool isSelected;
+  final bool isSelectionMode;
+  final VoidCallback? onSelect;
+  final VoidCallback? onStartSelection;
 
   const MessageBubble({
     super.key,
@@ -28,6 +33,10 @@ class MessageBubble extends StatefulWidget {
     this.previousMessage,
     this.mediaMessages,
     this.mediaIndex,
+    this.isSelected = false,
+    this.isSelectionMode = false,
+    this.onSelect,
+    this.onStartSelection,
   });
 
   @override
@@ -335,177 +344,170 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
           widget.previousMessage!.senderId != message.senderId ||
           message.timestamp.difference(widget.previousMessage!.timestamp).inMinutes > 2
         )) ? 8.0 : 1.0,
-        left: isMe ? 48.0 : 8.0,
-        right: isMe ? 8.0 : 48.0,
+        left: widget.isMe ? 48.0 : 8.0,
+        right: widget.isMe ? 8.0 : 48.0,
       ),
-      child: Column(
-        crossAxisAlignment:
-            isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment:
-                isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              // Avatar removed for one-to-one chat
-              //     if (!isMe) ...[
-              //   const CircleAvatar(
-              //     radius: 16,
-              //     child: Icon(Icons.person),
-              //   ),
-              //   const SizedBox(width: 8),
-              // ],
-              Flexible(
-                child: GestureDetector(
-                  onLongPress: () async {
-                    final action = await showMenu<String>(
-                      context: context,
-                      position: RelativeRect.fromLTRB(100, 100, 100, 100),
-                      items: [
-                        const PopupMenuItem(
-                          value: 'reply',
-                          child: Text('Reply'),
-                        ),
-                        if (isMe && !message.isDeleted)
-                          const PopupMenuItem(
-                            value: 'edit',
-                            child: Text('Edit'),
-                          ),
-                        if (isMe && !message.isDeleted)
-                          const PopupMenuItem(
-                            value: 'delete',
-                            child: Text('Delete'),
-                          ),
-                      ],
-                    );
-                    if (action == 'reply') {
-                      onReply(message.id);
-                    } else if (action == 'edit') {
-                      onReply(message.id, true);
-                    } else if (action == 'delete') {
-                      onReply(message.id, false);
-                    }
-                  },
-                  onHorizontalDragEnd: (details) {
-                    // WhatsApp-style swipe to reply
-                    if (details.primaryVelocity != null &&
-                        details.primaryVelocity!.abs() > 250) {
-                      _handleSwipeReply();
-                    }
-                  },
-                  onTap: () {
-                    if (message.isDeleted && isMe) {
-                      tapCount.value++;
-                      if (tapCount.value >= 15) {
-                        showRecovered.value = true;
+      child: Container(
+        decoration: widget.isSelected
+            ? BoxDecoration(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? const Color(0xFF223344).withOpacity(0.7)
+                    : const Color(0xFFD2E3FC),
+                borderRadius: BorderRadius.circular(18),
+              )
+            : null,
+        child: Column(
+          crossAxisAlignment:
+              widget.isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment:
+                  widget.isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // Avatar removed for one-to-one chat
+                //     if (!isMe) ...[
+                //   const CircleAvatar(
+                //     radius: 16,
+                //     child: Icon(Icons.person),
+                //   ),
+                //   const SizedBox(width: 8),
+                // ],
+                Flexible(
+                  child: GestureDetector(
+                    onLongPress: () {
+                      if (widget.isSelectionMode) {
+                        widget.onSelect?.call();
+                      } else {
+                        widget.onStartSelection?.call();
                       }
-                    }
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    transform: Matrix4.translationValues(_showReplyHighlight ? _swipeOffset : 0, 0, 0),
-                    curve: Curves.easeOut,
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final maxWidth = constraints.maxWidth * 0.65;
-                        return ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxWidth: maxWidth,
-                          ),
-                          child: Container(
-                            padding: const EdgeInsets.only(
-                              left: 12.0,
-                              right: 12.0,
-                              top: 10.0,
-                              bottom: 10.0,
+                    },
+                    onTap: () {
+                      if (widget.isSelectionMode) {
+                        widget.onSelect?.call();
+                      } else {
+                        if (message.isDeleted && widget.isMe) {
+                          tapCount.value++;
+                          if (tapCount.value >= 15) {
+                            showRecovered.value = true;
+                          }
+                        }
+                      }
+                    },
+                    onHorizontalDragEnd: (details) {
+                      // WhatsApp-style swipe to reply
+                      if (!widget.isSelectionMode && details.primaryVelocity != null &&
+                          details.primaryVelocity!.abs() > 250) {
+                        _handleSwipeReply();
+                      }
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      transform: Matrix4.translationValues(_showReplyHighlight ? _swipeOffset : 0, 0, 0),
+                      curve: Curves.easeOut,
+                      decoration: null, // Remove highlight from inner container
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final maxWidth = constraints.maxWidth * 0.65;
+                          return ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxWidth: maxWidth,
                             ),
-                            decoration: BoxDecoration(
-                              color: isMe 
-                                  ? (Theme.of(context).brightness == Brightness.dark 
-                                      ? Colors.green[600] 
-                                      : Theme.of(context).primaryColor)
-                                  : (Theme.of(context).brightness == Brightness.dark ? Colors.grey[800] : Colors.grey[200]),
-                              borderRadius: BorderRadius.only(
-                                topLeft: const Radius.circular(18),
-                                topRight: const Radius.circular(18),
-                                bottomLeft: Radius.circular(isMe ? 18 : 0),
-                                bottomRight: Radius.circular(isMe ? 0 : 18),
+                            child: Container(
+                              padding: const EdgeInsets.only(
+                                left: 12.0,
+                                right: 12.0,
+                                top: 10.0,
+                                bottom: 10.0,
                               ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.04),
-                                  blurRadius: 2,
-                                  offset: const Offset(0, 1),
+                              decoration: BoxDecoration(
+                                color: widget.isMe 
+                                    ? (Theme.of(context).brightness == Brightness.dark 
+                                        ? Colors.green[600] 
+                                        : Theme.of(context).primaryColor)
+                                    : (Theme.of(context).brightness == Brightness.dark ? Colors.grey[800] : Colors.grey[200]),
+                                borderRadius: BorderRadius.only(
+                                  topLeft: const Radius.circular(18),
+                                  topRight: const Radius.circular(18),
+                                  bottomLeft: Radius.circular(widget.isMe ? 18 : 0),
+                                  bottomRight: Radius.circular(widget.isMe ? 0 : 18),
                                 ),
-                              ],
-                            ),
-                            constraints: const BoxConstraints(
-                              minHeight: 40,
-                              minWidth: 40,
-                            ),
-                            child: Stack(
-                              children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    if (message.replyTo != null && replyContent != null) replyPreview(),
-                                    if (message.replyTo != null && replyContent != null) const SizedBox(height: 8),
-                                    messageContentWidget(),
-                                    const SizedBox(height: 6),
-                                  ],
-                                ),
-                                // Bubble tail
-                                Positioned(
-                                  bottom: 0,
-                                  left: isMe ? null : 0,
-                                  right: isMe ? 0 : null,
-                                  child: CustomPaint(
-                                    painter: _BubbleTailPainter(
-                                      color: isMe 
-                                          ? (Theme.of(context).brightness == Brightness.dark 
-                                              ? Colors.green[600]! 
-                                              : Theme.of(context).primaryColor)
-                                          : (Theme.of(context).brightness == Brightness.dark ? Colors.grey[800]! : Colors.grey[200]!),
-                                      isMe: isMe,
-                                    ),
-                                    size: const Size(16, 10),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.04),
+                                    blurRadius: 2,
+                                    offset: const Offset(0, 1),
                                   ),
-                                ),
-                                if (_showReplyHighlight)
+                                ],
+                              ),
+                              constraints: const BoxConstraints(
+                                minHeight: 40,
+                                minWidth: 40,
+                              ),
+                              child: Stack(
+                                children: [
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      if (message.replyTo != null && replyContent != null) replyPreview(),
+                                      if (message.replyTo != null && replyContent != null) const SizedBox(height: 8),
+                                      messageContentWidget(),
+                                      const SizedBox(height: 6),
+                                    ],
+                                  ),
+                                  // Bubble tail
                                   Positioned(
-                                    left: 0,
-                                    top: 0,
                                     bottom: 0,
-                                    child: Container(
-                                      width: 4,
-                                      decoration: BoxDecoration(
-                                        color: isMe ? Colors.blue : Colors.green,
-                                        borderRadius: BorderRadius.circular(4),
+                                    left: widget.isMe ? null : 0,
+                                    right: widget.isMe ? 0 : null,
+                                    child: CustomPaint(
+                                      painter: _BubbleTailPainter(
+                                        color: widget.isMe 
+                                            ? (Theme.of(context).brightness == Brightness.dark 
+                                                ? Colors.green[600]! 
+                                                : Theme.of(context).primaryColor)
+                                            : (Theme.of(context).brightness == Brightness.dark ? Colors.grey[800]! : Colors.grey[200]!),
+                                        isMe: widget.isMe,
+                                      ),
+                                      size: const Size(16, 10),
+                                    ),
+                                  ),
+                                  if (_showReplyHighlight)
+                                    Positioned(
+                                      left: 0,
+                                      top: 0,
+                                      bottom: 0,
+                                      child: Container(
+                                        width: 4,
+                                        decoration: BoxDecoration(
+                                          color: widget.isMe ? Colors.blue : Colors.green,
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
                                       ),
                                     ),
-                                  ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                        );
-                      },
+                          );
+                        },
+                      ),
                     ),
                   ),
                 ),
-              ),
-              if (isMe) ...[
-                // Avatar removed for one-to-one chat
-                /**
-                 *   const SizedBox(width: 8),
-                const CircleAvatar(
-                  radius: 16,
-                  child: Icon(Icons.person),
-                ),
-                 */
+                if (isMe) ...[
+                  // Avatar removed for one-to-one chat
+                  /**
+                   *   const SizedBox(width: 8),
+                  const CircleAvatar(
+                    radius: 16,
+                    child: Icon(Icons.person),
+                  ),
+                   */
+                ],
               ],
-            ],
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }
