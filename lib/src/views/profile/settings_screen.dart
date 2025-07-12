@@ -10,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:convert';
+import '../../../main.dart'; // <-- Import ThemeProvider
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -136,8 +137,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 26),
           ],
+          // Theme mode switch
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.brightness_6),
+              title: const Text('App Theme'),
+              subtitle: Consumer<ThemeProvider>(
+                builder: (context, themeProvider, _) {
+                  return DropdownButton<ThemeMode>(
+                    value: themeProvider.themeMode,
+                    onChanged: (mode) {
+                      if (mode != null) {
+                        themeProvider.setThemeMode(mode);
+                      }
+                    },
+                    items: const [
+                      DropdownMenuItem(
+                        value: ThemeMode.system,
+                        child: Text('System'),
+                      ),
+                      DropdownMenuItem(
+                        value: ThemeMode.light,
+                        child: Text('Light'),
+                      ),
+                      DropdownMenuItem(
+                        value: ThemeMode.dark,
+                        child: Text('Dark'),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+          const SizedBox(height: 26),
           if (_errorMessage != null)
             Padding(
               padding: const EdgeInsets.only(bottom: 16),

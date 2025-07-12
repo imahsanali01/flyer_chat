@@ -1787,7 +1787,7 @@ class _BackgroundPickerDialogState extends State<_BackgroundPickerDialog> {
   }
 
   Future<void> _saveBackground() async {
-    setState(() => _isLoading = true);
+    if (mounted) setState(() => _isLoading = true);
     Map<String, dynamic>? bg;
     if (_selectedImage != null) {
       bg = {
@@ -1822,7 +1822,7 @@ class _BackgroundPickerDialogState extends State<_BackgroundPickerDialog> {
       'timestamp': Timestamp.now(),
       'isRead': true,
     });
-    setState(() => _isLoading = false);
+    if (mounted) setState(() => _isLoading = false);
     Navigator.of(context).pop();
   }
 
@@ -1845,10 +1845,12 @@ class _BackgroundPickerDialogState extends State<_BackgroundPickerDialog> {
       ),
     );
     if (confirmed == true) {
-      setState(() {
-        _selectedColor = null;
-        _selectedImage = null;
-      });
+      if (mounted) {
+        setState(() {
+          _selectedColor = null;
+          _selectedImage = null;
+        });
+      }
     }
   }
 
