@@ -541,6 +541,55 @@ class _ChatScreenState extends State<ChatScreen> {
             });
 
             // Now return the Scaffold with AppBar and body, using visibleMessages/allMessages as needed
+            Widget? editButton;
+            if (_selectedMessageIds.length == 1) {
+              final msg = visibleMessages.firstWhere((m) => m.id == _selectedMessageIds.first);
+              final isMe = msg.senderId == widget.currentUser.uid;
+              final isText = msg.type == MessageType.text;
+              final notDeleted = !msg.isDeleted;
+              final within15 = DateTime.now().difference(msg.timestamp!).inMinutes < 15;
+              if (isMe && isText && notDeleted && within15) {
+                editButton = IconButton(
+                  icon: const Icon(Icons.edit),
+                  onPressed: () async {
+                    final controller = TextEditingController(text: msg.content);
+                    final result = await showDialog<String>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Edit Message'),
+                        content: TextField(
+                          controller: controller,
+                          maxLines: null,
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('Cancel'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, controller.text.trim()),
+                            child: const Text('Save'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (result != null && result.isNotEmpty && result != msg.content) {
+                      await FirebaseFirestore.instance
+                        .collection('chats')
+                        .doc(_getChatId())
+                        .collection('messages')
+                        .doc(msg.id)
+                        .update({
+                        'content': result,
+                        'isEdited': true,
+                        'editedAt': Timestamp.fromDate(DateTime.now()),
+                      });
+                    }
+                    setState(() => _selectedMessageIds.clear());
+                  },
+                );
+              }
+            }
             return Scaffold(
               appBar: _isSelectionMode
                   ? AppBar(
@@ -580,6 +629,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             setState(() => _selectedMessageIds.clear());
                           },
                         ),
+                        if (editButton != null) editButton,
                         if (_selectedMessageIds.length == 1)
                           IconButton(
                             icon: const Icon(Icons.info_outline),

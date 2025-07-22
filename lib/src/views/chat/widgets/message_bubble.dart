@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_chat_bubble/bubble_type.dart';
 import 'package:flutter_chat_bubble/clippers/chat_bubble_clipper_5.dart';
 import 'package:flutter_chat_bubble/chat_bubble.dart';
@@ -386,7 +387,7 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
                       if (widget.isSelectionMode) {
                         widget.onSelect?.call();
                       } else {
-                        if (message.isDeleted && widget.isMe) {
+                        if (widget.message.isDeleted && widget.isMe) {
                           tapCount.value++;
                           if (tapCount.value >= 15) {
                             showRecovered.value = true;
