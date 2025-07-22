@@ -6,6 +6,7 @@ import 'src/services/auth_service.dart';
 import 'src/views/auth/login_screen.dart';
 import 'src/views/chat/chat_list_screen.dart';
 import 'src/theme/app_theme.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ThemeProvider extends ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.system;
@@ -21,6 +22,10 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
+  );
+  // Enable Firestore offline persistence
+  FirebaseFirestore.instance.settings = const Settings(
+    persistenceEnabled: true,
   );
   runApp(
     MultiProvider(
