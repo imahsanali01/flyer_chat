@@ -23,6 +23,7 @@ import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import 'dart:typed_data';
 import 'package:flutter/services.dart';
+import 'chat_list_screen.dart'; // For ChatHeadsScreen
 //app certificate secondary
 // e212492ef48b47ae9dc5508d28d6c806
 class ChatScreen extends StatefulWidget {
@@ -624,8 +625,98 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                         IconButton(
                           icon: const Icon(Icons.forward),
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Forward not implemented')));
+                          onPressed: () async {
+                            // Only allow forwarding non-deleted, non-system messages
+                            final forwardMsgs = visibleMessages.where((m) => _selectedMessageIds.contains(m.id) && !m.isDeleted && m.type != MessageType.system).toList();
+                            if (forwardMsgs.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No valid messages to forward.')));
+                              setState(() => _selectedMessageIds.clear());
+                              return;
+                            }
+                            // Fetch all users except current
+                            final usersSnap = await FirebaseFirestore.instance.collection('users').get();
+                            final allUsers = usersSnap.docs
+                              .map((doc) => UserModel.fromMap(doc.data() as Map<String, dynamic>))
+                              .where((u) => u.uid != widget.currentUser.uid)
+                              .toList();
+                            // Show user picker dialog
+                            final picked = await showDialog<List<UserModel>>(
+                              context: context,
+                              builder: (context) {
+                                final Set<String> selectedUids = {};
+                                return StatefulBuilder(
+                                  builder: (context, setStateDialog) => AlertDialog(
+                                    title: const Text('Forward to...'),
+                                    content: SizedBox(
+                                      width: 350,
+                                      height: 400,
+                                      child: ListView(
+                                        children: allUsers.map((user) => CheckboxListTile(
+                                          value: selectedUids.contains(user.uid),
+                                          onChanged: (v) {
+                                            setStateDialog(() {
+                                              if (v == true) {
+                                                selectedUids.add(user.uid);
+                                              } else {
+                                                selectedUids.remove(user.uid);
+                                              }
+                                            });
+                                          },
+                                          title: Text(user.displayName),
+                                          secondary: _buildUserAvatar(user, context, radius: 18, fontSize: 18),
+                                        )).toList(),
+                                      ),
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context, null),
+                                        child: const Text('Cancel'),
+                                      ),
+                                      ElevatedButton(
+                                        onPressed: selectedUids.isEmpty
+                                            ? null
+                                            : () {
+                                                final pickedUsers = allUsers.where((u) => selectedUids.contains(u.uid)).toList();
+                                                Navigator.pop(context, pickedUsers);
+                                              },
+                                        child: const Text('Forward'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            );
+                            if (picked == null || picked.isEmpty) {
+                              setState(() => _selectedMessageIds.clear());
+                              return;
+                            }
+                            // Forward each message to each picked user
+                            for (final user in picked) {
+                              for (final msg in forwardMsgs) {
+                                final messageId = const Uuid().v4();
+                                final messageMap = MessageModel(
+                                  id: messageId,
+                                  senderId: widget.currentUser.uid,
+                                  receiverId: user.uid,
+                                  content: msg.content,
+                                  type: msg.type,
+                                  timestamp: DateTime.now(),
+                                  replyTo: null,
+                                  metadata: msg.metadata,
+                                  isForwarded: true, // Mark as forwarded
+                                ).toMap();
+                                messageMap['timestamp'] = FieldValue.serverTimestamp();
+                                final chatId = [widget.currentUser.uid, user.uid]..sort();
+                                final chatDocId = chatId.join('_');
+                                await FirebaseFirestore.instance
+                                  .collection('chats')
+                                  .doc(chatDocId)
+                                  .collection('messages')
+                                  .doc(messageId)
+                                  .set(messageMap);
+                              }
+                            }
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Message(s) forwarded.')));
                             setState(() => _selectedMessageIds.clear());
                           },
                         ),

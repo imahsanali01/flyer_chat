@@ -450,6 +450,18 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
                                   Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
+                                      if (message.isForwarded == true)
+                                        Padding(
+                                          padding: const EdgeInsets.only(bottom: 2.0),
+                                          child: Text(
+                                            'Forwarded',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontStyle: FontStyle.italic,
+                                              color: Colors.grey[600],
+                                            ),
+                                          ),
+                                        ),
                                       if (message.replyTo != null && replyContent != null) replyPreview(),
                                       if (message.replyTo != null && replyContent != null) const SizedBox(height: 8),
                                       messageContentWidget(),

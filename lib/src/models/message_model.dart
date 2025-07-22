@@ -67,6 +67,9 @@ class MessageModel {
   @HiveField(13)
   final String? originalContent;
 
+  @HiveField(14)
+  final bool? isForwarded;
+
   MessageModel({
     required this.id,
     required this.senderId,
@@ -82,6 +85,7 @@ class MessageModel {
     this.editedAt,
     this.isDeleted = false,
     this.originalContent,
+    this.isForwarded,
   });
 
   factory MessageModel.fromMap(Map<String, dynamic> map) {
@@ -114,6 +118,7 @@ class MessageModel {
           : null,
       isDeleted: map['isDeleted'] as bool? ?? false,
       originalContent: map['originalContent'] as String?,
+      isForwarded: map['isForwarded'] as bool? ?? false,
     );
   }
 
@@ -133,6 +138,7 @@ class MessageModel {
       'editedAt': editedAt != null ? Timestamp.fromDate(editedAt!) : null,
       'isDeleted': isDeleted,
       'originalContent': originalContent,
+      if (isForwarded != null && isForwarded == true) 'isForwarded': true,
     };
   }
 
@@ -151,6 +157,7 @@ class MessageModel {
     DateTime? editedAt,
     bool? isDeleted,
     String? originalContent,
+    bool? isForwarded,
   }) {
     return MessageModel(
       id: id ?? this.id,
@@ -167,6 +174,7 @@ class MessageModel {
       editedAt: editedAt ?? this.editedAt,
       isDeleted: isDeleted ?? this.isDeleted,
       originalContent: originalContent ?? this.originalContent,
+      isForwarded: isForwarded ?? this.isForwarded,
     );
   }
 }
