@@ -23,6 +23,8 @@ class MessageBubble extends StatefulWidget {
   final bool isSelectionMode;
   final VoidCallback? onSelect;
   final VoidCallback? onStartSelection;
+  final void Function(String repliedMessageId)? onTapRepliedMessage;
+  final bool highlight;
 
   const MessageBubble({
     super.key,
@@ -38,6 +40,8 @@ class MessageBubble extends StatefulWidget {
     this.isSelectionMode = false,
     this.onSelect,
     this.onStartSelection,
+    this.onTapRepliedMessage,
+    this.highlight = false,
   });
 
   @override
@@ -291,7 +295,13 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
             ),
           );
         }
-        return Container(
+        return GestureDetector(
+          onTap: () {
+            if (widget.onTapRepliedMessage != null) {
+              widget.onTapRepliedMessage!(message.replyTo!);
+            }
+          },
+          child: Container(
           // No margin, so it's inside the bubble
           padding: const EdgeInsets.only(top: 4, bottom: 4, left: 12, right: 0),
           decoration: BoxDecoration(
@@ -332,10 +342,11 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
               ),
             ],
           ),
-        );
-      }
-      return const SizedBox.shrink();
+        ),
+      );
     }
+    return const SizedBox.shrink();
+  }
 
     return Padding(
       padding: EdgeInsets.only(
@@ -356,7 +367,13 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
                     : const Color(0xFFD2E3FC),
                 borderRadius: BorderRadius.circular(18),
               )
-            : null,
+            : widget.highlight
+                ? BoxDecoration(
+                    color: Colors.yellow.withOpacity(0.25),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: Colors.amber, width: 2),
+                  )
+                : null,
         child: Column(
           crossAxisAlignment:
               widget.isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,

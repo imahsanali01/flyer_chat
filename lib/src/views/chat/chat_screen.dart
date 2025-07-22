@@ -119,6 +119,22 @@ class _ChatScreenState extends State<ChatScreen> {
   int _lastMessageCount = 0;
 
   // Remove all _bgColor, _bgImage, _bgSub, and related logic
+  int? _highlightedIndex;
+
+  void _scrollToMessageById(String messageId, List<MessageModel> visibleMessages) {
+    final index = visibleMessages.indexWhere((m) => m.id == messageId);
+    if (index != -1) {
+      _scrollController.animateTo(
+        index * 10.0, // Approximate message height, adjust as needed
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+      );
+      setState(() => _highlightedIndex = index);
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) setState(() => _highlightedIndex = null);
+      });
+    }
+  }
 
   @override
   void initState() {
@@ -1066,6 +1082,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             ? mediaMessages.indexWhere((m) => m.id == message.id)
                             : null;
                         return MessageBubble(
+                          key: ValueKey(message.id),
                           message: message,
                           isMe: isMe,
                           onReply: (String? messageId, [bool? isEdit]) async {
@@ -1156,6 +1173,9 @@ class _ChatScreenState extends State<ChatScreen> {
                               _selectedMessageIds.add(message.id);
                             });
                           },
+                          onTapRepliedMessage: (repliedId) => _scrollToMessageById(repliedId, visibleMessages),
+                          // Add highlight prop
+                          highlight: _highlightedIndex == index,
                         );
                       },
                     ),
