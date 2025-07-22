@@ -120,6 +120,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // Remove all _bgColor, _bgImage, _bgSub, and related logic
   int? _highlightedIndex;
+  bool _hasAutoScrolledOnOpen = false;
 
   void _scrollToMessageById(String messageId, List<MessageModel> visibleMessages) {
     final index = visibleMessages.indexWhere((m) => m.id == messageId);
@@ -150,7 +151,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(const Duration(milliseconds: 100), () {
-        _scrollToBottom();
+      _scrollToBottom();
       });
     });
     _loadMutedAndArchived();
@@ -594,6 +595,24 @@ class _ChatScreenState extends State<ChatScreen> {
           final unread = visibleMessages.any((m) => m.receiverId == widget.currentUser.uid && !m.isRead);
           if (unread) {
             _markMessagesAsRead();
+          }
+        });
+
+        // After visibleMessages is built in the StreamBuilder:
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scrollController.hasClients) {
+            final threshold = 200.0;
+            final maxScroll = _scrollController.position.maxScrollExtent;
+            final currentScroll = _scrollController.position.pixels;
+            final isAtBottom = (maxScroll - currentScroll) < threshold;
+            if (!_hasAutoScrolledOnOpen) {
+              _hasAutoScrolledOnOpen = true;
+              _scrollToBottom();
+            } else if (visibleMessages.length > _lastMessageCount && isAtBottom) {
+              // Only auto-scroll for new messages if already at bottom
+              _scrollToBottom();
+            }
+            _lastMessageCount = visibleMessages.length;
           }
         });
 

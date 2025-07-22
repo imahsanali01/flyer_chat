@@ -19,11 +19,14 @@ class AuthService extends ChangeNotifier with WidgetsBindingObserver {
   int _loginAttempts = 0;
   bool _biometricEnabled = false;
   Timer? _heartbeatTimer;
+  bool _isLoading = true;
+  bool get isLoading => _isLoading;
 
   UserModel? get currentUser => _user;
   bool get biometricEnabled => _biometricEnabled;
 
   AuthService() {
+    _isLoading = true;
     _initializeAuth();
     WidgetsBinding.instance.addObserver(this);
   }
@@ -34,7 +37,7 @@ class AuthService extends ChangeNotifier with WidgetsBindingObserver {
       if (kIsWeb) {
         await _auth.setPersistence(Persistence.LOCAL);
       }
-      
+      bool firstEvent = true;
       _auth.authStateChanges().listen((User? user) async {
         if (user != null) {
           await _loadUserData(user.uid);
@@ -44,9 +47,16 @@ class AuthService extends ChangeNotifier with WidgetsBindingObserver {
           _stopHeartbeat();
           notifyListeners();
         }
+        if (firstEvent) {
+          _isLoading = false;
+          firstEvent = false;
+          notifyListeners();
+        }
       });
     } catch (e) {
       print('Error initializing auth: $e');
+      _isLoading = false;
+      notifyListeners();
     }
   }
 
