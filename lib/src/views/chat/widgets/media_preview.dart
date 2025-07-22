@@ -116,13 +116,13 @@ class _MediaPreviewState extends State<MediaPreview> {
   Widget build(BuildContext context) {
     switch (widget.message.type) {
       case MessageType.image:
-        Uint8List? imageBytes;
+        String? base64;
         if (widget.message.content.isNotEmpty) {
-          imageBytes = base64Decode(widget.message.content);
+          base64 = widget.message.content;
         } else if (widget.message.metadata != null && widget.message.metadata?['base64'] != null) {
-          imageBytes = base64Decode(widget.message.metadata?['base64']);
+          base64 = widget.message.metadata?['base64'];
         }
-        if (imageBytes == null) return const Icon(Icons.error);
+        if (base64 == null || base64.isEmpty) return const Icon(Icons.error);
         return GestureDetector(
           onTap: () {
             final mediaList = widget.mediaMessages ?? [widget.message];
@@ -136,14 +136,12 @@ class _MediaPreviewState extends State<MediaPreview> {
               ),
             );
           },
-          child: ClipRRect(
+          child: CachedMessageImage(
+            base64: base64,
+            fit: BoxFit.cover,
+            width: double.infinity,
+            height: 200,
             borderRadius: BorderRadius.circular(8),
-            child: Image.memory(
-              imageBytes,
-              fit: BoxFit.cover,
-              width: double.infinity,
-              height: 200,
-            ),
           ),
         );
 
@@ -278,5 +276,64 @@ class _MediaPreviewState extends State<MediaPreview> {
       default:
         return const SizedBox.shrink();
     }
+  }
+} 
+
+class CachedMessageImage extends StatefulWidget {
+  final String base64;
+  final double? width;
+  final double? height;
+  final BoxFit fit;
+  final BorderRadius borderRadius;
+  const CachedMessageImage({Key? key, required this.base64, this.width, this.height, this.fit = BoxFit.cover, this.borderRadius = const BorderRadius.all(Radius.circular(8))}) : super(key: key);
+
+  @override
+  State<CachedMessageImage> createState() => _CachedMessageImageState();
+}
+
+class _CachedMessageImageState extends State<CachedMessageImage> {
+  Uint8List? _imageBytes;
+  String? _lastBase64;
+
+  @override
+  void didUpdateWidget(covariant CachedMessageImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.base64 != _lastBase64) {
+      _decodeImage();
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _decodeImage();
+  }
+
+  void _decodeImage() {
+    if (widget.base64.isNotEmpty) {
+      _imageBytes = base64Decode(widget.base64);
+      _lastBase64 = widget.base64;
+    } else {
+      _imageBytes = null;
+      _lastBase64 = null;
+    }
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: _imageBytes != null
+          ? ClipRRect(
+              borderRadius: widget.borderRadius,
+              child: Image.memory(
+                _imageBytes!,
+                fit: widget.fit,
+                width: widget.width,
+                height: widget.height,
+              ),
+            )
+          : const Icon(Icons.error),
+    );
   }
 } 
