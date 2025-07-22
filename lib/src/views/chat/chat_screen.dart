@@ -124,14 +124,18 @@ class _ChatScreenState extends State<ChatScreen> {
   void _scrollToMessageById(String messageId, List<MessageModel> visibleMessages) {
     final index = visibleMessages.indexWhere((m) => m.id == messageId);
     if (index != -1) {
+      // Estimate message height (adjust if needed)
+      final estimatedHeight = 80.0;
+      final listViewHeight = MediaQuery.of(context).size.height * 0.6; // Approximate visible area
+      final offset = (index * estimatedHeight) - (listViewHeight / 2) + (estimatedHeight / 2);
       _scrollController.animateTo(
-        index * 10.0, // Approximate message height, adjust as needed
+        offset.clamp(0.0, _scrollController.position.maxScrollExtent),
         duration: const Duration(milliseconds: 400),
         curve: Curves.easeInOut,
       );
       setState(() => _highlightedIndex = index);
       Future.delayed(const Duration(seconds: 2), () {
-        if (mounted) setState(() => _highlightedIndex = null);
+        if (mounted && _highlightedIndex == index) setState(() => _highlightedIndex = null);
       });
     }
   }
@@ -1174,7 +1178,6 @@ class _ChatScreenState extends State<ChatScreen> {
                             });
                           },
                           onTapRepliedMessage: (repliedId) => _scrollToMessageById(repliedId, visibleMessages),
-                          // Add highlight prop
                           highlight: _highlightedIndex == index,
                         );
                       },
