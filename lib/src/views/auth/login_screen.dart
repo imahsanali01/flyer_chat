@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/auth_service.dart';
 import 'register_screen.dart';
+import '../../views/chat/chat_list_screen.dart'; // Correct import for ChatListScreen
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -31,6 +32,14 @@ class _LoginScreenState extends State<LoginScreen> {
               _emailController.text.trim(),
               _passwordController.text,
             );
+        // Manual redirect workaround: if login is successful and user is not null, push ChatListScreen
+        final user = context.read<AuthService>().currentUser;
+        if (user != null && mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const ChatListScreen()),
+            (route) => false,
+          );
+        }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

@@ -28,15 +28,19 @@ void main() async {
         ChangeNotifierProvider(create: (_) => AuthService()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
       ],
-      child: Consumer<ThemeProvider>(
-        builder: (context, themeProvider, _) {
+      child: Consumer2<AuthService, ThemeProvider>(
+        builder: (context, authService, themeProvider, _) {
           return MaterialApp(
             title: 'Flyer Chat',
             debugShowCheckedModeBanner: false,
             theme: AppTheme.lightTheme,
             darkTheme: AppTheme.darkTheme,
             themeMode: themeProvider.themeMode,
-            home: const AuthGate(),
+            home: authService.isLoading
+                ? const SplashScreen()
+                : authService.currentUser != null
+                    ? const ChatListScreen()
+                    : const LoginScreen(),
           );
         },
       ),
@@ -55,25 +59,6 @@ class MyApp extends StatelessWidget {
         primarySwatch: Colors.blue,
       ),
       home: const SplashScreen(),
-    );
-  }
-}
-
-class AuthGate extends StatelessWidget {
-  const AuthGate({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Consumer<AuthService>(
-      builder: (context, authService, _) {
-        if (authService.isLoading) {
-          return const SplashScreen();
-        }
-        if (authService.currentUser != null) {
-          return const ChatListScreen();
-        }
-        return const LoginScreen();
-      },
     );
   }
 }
@@ -104,28 +89,18 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_initialized) {
-      return Scaffold(
-        backgroundColor: Colors.white,
-        extendBodyBehindAppBar: true,
-        resizeToAvoidBottomInset: false,
-        body: SizedBox.expand(
-          child: Image.asset(
-            'assets/icons/ic_launcher.png',
-            fit: BoxFit.cover,
-            width: double.infinity,
-            height: double.infinity,
-          ),
+    return Scaffold(
+      backgroundColor: Colors.white,
+      extendBodyBehindAppBar: true,
+      resizeToAvoidBottomInset: false,
+      body: SizedBox.expand(
+        child: Image.asset(
+          'assets/icons/ic_launcher.png',
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
         ),
-      );
-    }
-    // Replace with your real app's entry point (e.g., AuthGate or HomeScreen)
-    return Consumer<AuthService>(
-      builder: (context, authService, _) {
-        return authService.currentUser != null
-            ? const ChatListScreen()
-            : const LoginScreen();
-      },
+      ),
     );
   }
 }

@@ -138,9 +138,9 @@ class _MediaPreviewState extends State<MediaPreview> {
           },
           child: CachedMessageImage(
             base64: base64,
-            fit: BoxFit.cover,
-            width: double.infinity,
-            height: 200,
+              fit: BoxFit.cover,
+              width: double.infinity,
+              height: 200,
             borderRadius: BorderRadius.circular(8),
           ),
         );

@@ -151,7 +151,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(const Duration(milliseconds: 100), () {
-      _scrollToBottom();
+        _scrollToBottom();
       });
     });
     _loadMutedAndArchived();
@@ -216,7 +216,13 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    setState(() => _isLoading = true);
+    // Clear the input immediately
+    _messageController.clear();
+    _replyTo = null;
+    _scrollToBottom();
+
+    // No isLoading for send button
+    // setState(() => _isLoading = true);
 
     try {
       final messageId = const Uuid().v4();
@@ -240,9 +246,9 @@ class _ChatScreenState extends State<ChatScreen> {
           .doc(messageId)
           .set(messageMap);
 
-      _messageController.clear();
-      _replyTo = null;
-      _scrollToBottom();
+      // _messageController.clear(); // Already cleared above
+      // _replyTo = null; // Already cleared above
+      // _scrollToBottom(); // Already called above
       // Immediately set typing status to false when message is sent
       _setTypingStatus(false);
       _typingTimer?.cancel();
@@ -251,7 +257,7 @@ class _ChatScreenState extends State<ChatScreen> {
         SnackBar(content: Text(e.toString())),
       );
     } finally {
-      setState(() => _isLoading = false);
+      // setState(() => _isLoading = false); // No loader on send button
     }
   }
 
@@ -538,65 +544,65 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     final chatId = _getChatId();
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('chats')
-          .doc(chatId)
-          .collection('messages')
-          .orderBy('timestamp', descending: false)
-          .orderBy('id', descending: false)
-          .snapshots(),
-      builder: (context, snapshot) {
-        // Error/loading handling
-        if (snapshot.hasError) {
-          return Scaffold(
-            appBar: AppBar(title: const Text('Chat')),
-            body: Center(child: Text('Error:  ${snapshot.error}')),
-          );
-        }
-        if (!snapshot.hasData) {
-          return Scaffold(
-            appBar: AppBar(title: const Text('Chat')),
-            body: const Center(child: CircularProgressIndicator()),
-          );
-        }
-        // Prepare message lists
-        final messages = snapshot.data!.docs
-            .map((doc) => MessageModel.fromMap(doc.data() as Map<String, dynamic>))
-            .where((m) => m.timestamp != null)
-            .toList();
-        messages.sort((a, b) {
-          final cmp = a.timestamp.compareTo(b.timestamp);
-          if (cmp != 0) return cmp;
-          return a.id.compareTo(b.id);
-        });
-        final allMessages = {for (var m in messages) m.id: m};
-        final filteredMessages = _messageSearchQuery.isEmpty
-            ? messages
-            : messages.where((m) => m.content.toLowerCase().contains(_messageSearchQuery)).toList();
-        final visibleMessages = filteredMessages.where((m) {
-          final meta = m.metadata;
-          final deletedFor = meta != null ? meta['deletedFor'] as List? : null;
-          return deletedFor == null || !deletedFor.contains(widget.currentUser.uid);
-        }).toList();
-
-        // After visibleMessages is built, add post-frame callback for auto-scroll and read receipts
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_scrollController.hasClients) {
-            final maxScroll = _scrollController.position.maxScrollExtent;
-            final currentScroll = _scrollController.position.pixels;
-            // Auto-scroll if new message and user is near bottom
-            if (visibleMessages.length > _lastMessageCount && maxScroll - currentScroll < 200) {
-              _scrollToBottom();
+        return StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('chats')
+              .doc(chatId)
+              .collection('messages')
+              .orderBy('timestamp', descending: false)
+              .orderBy('id', descending: false)
+              .snapshots(),
+          builder: (context, snapshot) {
+            // Error/loading handling
+            if (snapshot.hasError) {
+              return Scaffold(
+                appBar: AppBar(title: const Text('Chat')),
+                body: Center(child: Text('Error:  ${snapshot.error}')),
+              );
             }
-            _lastMessageCount = visibleMessages.length;
-          }
-          // Mark as read only if there are unread messages
-          final unread = visibleMessages.any((m) => m.receiverId == widget.currentUser.uid && !m.isRead);
-          if (unread) {
-            _markMessagesAsRead();
-          }
-        });
+            if (!snapshot.hasData) {
+              return Scaffold(
+                appBar: AppBar(title: const Text('Chat')),
+                body: const Center(child: CircularProgressIndicator()),
+              );
+            }
+            // Prepare message lists
+            final messages = snapshot.data!.docs
+                .map((doc) => MessageModel.fromMap(doc.data() as Map<String, dynamic>))
+                .where((m) => m.timestamp != null)
+                .toList();
+            messages.sort((a, b) {
+              final cmp = a.timestamp.compareTo(b.timestamp);
+              if (cmp != 0) return cmp;
+              return a.id.compareTo(b.id);
+            });
+            final allMessages = {for (var m in messages) m.id: m};
+            final filteredMessages = _messageSearchQuery.isEmpty
+                ? messages
+                : messages.where((m) => m.content.toLowerCase().contains(_messageSearchQuery)).toList();
+            final visibleMessages = filteredMessages.where((m) {
+              final meta = m.metadata;
+              final deletedFor = meta != null ? meta['deletedFor'] as List? : null;
+              return deletedFor == null || !deletedFor.contains(widget.currentUser.uid);
+            }).toList();
+
+            // After visibleMessages is built, add post-frame callback for auto-scroll and read receipts
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (_scrollController.hasClients) {
+                final maxScroll = _scrollController.position.maxScrollExtent;
+                final currentScroll = _scrollController.position.pixels;
+                // Auto-scroll if new message and user is near bottom
+                if (visibleMessages.length > _lastMessageCount && maxScroll - currentScroll < 200) {
+                  _scrollToBottom();
+                }
+                _lastMessageCount = visibleMessages.length;
+              }
+              // Mark as read only if there are unread messages
+              final unread = visibleMessages.any((m) => m.receiverId == widget.currentUser.uid && !m.isRead);
+              if (unread) {
+                _markMessagesAsRead();
+              }
+            });
 
         // After visibleMessages is built in the StreamBuilder:
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -616,7 +622,7 @@ class _ChatScreenState extends State<ChatScreen> {
           }
         });
 
-        // Now return the Scaffold with AppBar and body, using visibleMessages/allMessages as needed
+            // Now return the Scaffold with AppBar and body, using visibleMessages/allMessages as needed
         Widget? editButton;
         if (_selectedMessageIds.length == 1) {
           final msg = visibleMessages.firstWhere((m) => m.id == _selectedMessageIds.first);
@@ -666,47 +672,47 @@ class _ChatScreenState extends State<ChatScreen> {
             );
           }
         }
-        return Scaffold(
+            return Scaffold(
           backgroundColor: Colors.transparent,
-          appBar: _isSelectionMode
-              ? AppBar(
-                  leading: IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () {
-                      setState(() => _selectedMessageIds.clear());
-                    },
-                  ),
-                  title: Text('${_selectedMessageIds.length} selected'),
-                  actions: [
-                    if (_selectedMessageIds.length == 1)
-                      IconButton(
-                        icon: const Icon(Icons.reply),
+              appBar: _isSelectionMode
+                  ? AppBar(
+                      leading: IconButton(
+                        icon: const Icon(Icons.close),
                         onPressed: () {
-                          final msgId = _selectedMessageIds.first;
-                          setState(() {
-                            _replyTo = allMessages[msgId];
-                            _selectedMessageIds.clear();
-                          });
+                          setState(() => _selectedMessageIds.clear());
                         },
                       ),
-                    IconButton(
-                      icon: const Icon(Icons.copy),
-                      onPressed: () {
-                        final selectedMsgs = visibleMessages.where((m) => _selectedMessageIds.contains(m.id)).toList();
-                        final text = selectedMsgs.map((m) => m.content).join('\n');
-                        Clipboard.setData(ClipboardData(text: text));
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied to clipboard')));
-                        setState(() => _selectedMessageIds.clear());
-                      },
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.forward),
+                      title: Text('${_selectedMessageIds.length} selected'),
+                      actions: [
+                        if (_selectedMessageIds.length == 1)
+                          IconButton(
+                            icon: const Icon(Icons.reply),
+                            onPressed: () {
+                              final msgId = _selectedMessageIds.first;
+                              setState(() {
+                                _replyTo = allMessages[msgId];
+                                _selectedMessageIds.clear();
+                              });
+                            },
+                          ),
+                        IconButton(
+                          icon: const Icon(Icons.copy),
+                          onPressed: () {
+                            final selectedMsgs = visibleMessages.where((m) => _selectedMessageIds.contains(m.id)).toList();
+                            final text = selectedMsgs.map((m) => m.content).join('\n');
+                            Clipboard.setData(ClipboardData(text: text));
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied to clipboard')));
+                            setState(() => _selectedMessageIds.clear());
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.forward),
                       onPressed: () async {
                         // Only allow forwarding non-deleted, non-system messages
                         final forwardMsgs = visibleMessages.where((m) => _selectedMessageIds.contains(m.id) && !m.isDeleted && m.type != MessageType.system).toList();
                         if (forwardMsgs.isEmpty) {
                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No valid messages to forward.')));
-                          setState(() => _selectedMessageIds.clear());
+                            setState(() => _selectedMessageIds.clear());
                           return;
                         }
                         // Fetch all users except current
@@ -797,244 +803,244 @@ class _ChatScreenState extends State<ChatScreen> {
                       },
                     ),
                     if (editButton != null) editButton,
-                    if (_selectedMessageIds.length == 1)
-                      IconButton(
-                        icon: const Icon(Icons.info_outline),
-                        onPressed: () {
-                          final msg = visibleMessages.firstWhere((m) => m.id == _selectedMessageIds.first);
-                          showDialog(
-                            context: context,
-                            builder: (context) => AlertDialog(
-                              title: const Text('Message Info'),
-                              content: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('Sender: ${msg.senderId == widget.currentUser.uid ? 'You' : widget.otherUser.displayName}'),
-                                  Text('Time: ${msg.timestamp}'),
-                                  Text('Type: ${msg.type.toString().split('.').last}'),
-                                  Text('Read: ${msg.isRead ? 'Yes' : 'No'}'),
-                                ],
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  child: const Text('Close'),
-                                ),
-                              ],
-                            ),
-                          );
-                          setState(() => _selectedMessageIds.clear());
-                        },
-                      ),
-                    IconButton(
-                      icon: const Icon(Icons.delete),
-                      onPressed: () async {
-                        final chatId = _getChatId();
-                        for (final msgId in _selectedMessageIds) {
-                          await FirebaseFirestore.instance
-                              .collection('chats')
-                              .doc(chatId)
-                              .collection('messages')
-                              .doc(msgId)
-                              .update({
-                            'isDeleted': true,
-                            'originalContent': '',
-                            'content': '',
-                          });
-                        }
-                        setState(() => _selectedMessageIds.clear());
-                      },
-                    ),
-                  ],
-                )
-              : AppBar(
-                  title: !_isSearchingMessages
-                      ? GestureDetector(
-                          onTap: () async {
-                            if (widget.isPersonalChat) return; // No menu for personal chat
-                            final action = await showModalBottomSheet<String>(
-                              context: context,
-                              shape: const RoundedRectangleBorder(
-                                borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-                              ),
-                              builder: (context) => SafeArea(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    ListTile(
-                                      leading: _buildUserAvatar(widget.otherUser, context, radius: 24, fontSize: 22),
-                                      title: Text(widget.otherUser.displayName, style: const TextStyle(fontSize: 18)),
-                                      subtitle: StreamBuilder<DocumentSnapshot>(
-                                        stream: FirebaseFirestore.instance
-                                            .collection('users')
-                                            .doc(widget.otherUser.uid)
-                                            .snapshots(),
-                                        builder: (context, snapshot) {
-                                          bool isOnline = false;
-                                          if (snapshot.hasData && snapshot.data!.data() != null) {
-                                            final data = snapshot.data!.data() as Map<String, dynamic>;
-                                            isOnline = data['isOnline'] as bool? ?? false;
-                                          }
-                                          return Text(
-                                            isOnline ? 'Online' : 'Offline',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: isOnline ? Colors.green : Colors.grey,
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                    const Divider(),
-                                    if (!widget.isPersonalChat) ...[
-                                      ListTile(
-                                        leading: Icon(_isArchived ? Icons.unarchive : Icons.archive_outlined),
-                                        title: Text(_isArchived ? 'Unarchive' : 'Archive'),
-                                        onTap: () async {
-                                          Navigator.pop(context, 'archive');
-                                        },
-                                      ),
-                                      ListTile(
-                                        leading: Icon(_isMuted ? Icons.notifications_active : Icons.notifications_off_outlined),
-                                        title: Text(_isMuted ? 'Unmute' : 'Mute'),
-                                        onTap: () async {
-                                          Navigator.pop(context, 'mute');
-                                        },
-                                      ),
+                        if (_selectedMessageIds.length == 1)
+                          IconButton(
+                            icon: const Icon(Icons.info_outline),
+                            onPressed: () {
+                              final msg = visibleMessages.firstWhere((m) => m.id == _selectedMessageIds.first);
+                              showDialog(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: const Text('Message Info'),
+                                  content: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('Sender: ${msg.senderId == widget.currentUser.uid ? 'You' : widget.otherUser.displayName}'),
+                                      Text('Time: ${msg.timestamp}'),
+                                      Text('Type: ${msg.type.toString().split('.').last}'),
+                                      Text('Read: ${msg.isRead ? 'Yes' : 'No'}'),
                                     ],
-                                    if (!widget.isPersonalChat)
-                                      ListTile(
-                                        leading: const Icon(Icons.format_paint),
-                                        title: const Text('Change Background'),
-                                        onTap: () async {
-                                          Navigator.pop(context);
-                                          showDialog(
-                                            context: context,
-                                            builder: (context) => _BackgroundPickerDialog(
-                                              chatId: _getChatId(),
-                                              currentUser: widget.currentUser,
-                                            ),
-                                          );
-                                        },
-                                      ),
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context),
+                                      child: const Text('Close'),
+                                    ),
                                   ],
                                 ),
-                              ),
-                            );
-                            if (action == 'clear') {
-                              // final confirm = await showDialog<bool>(
-                              //   context: context,
-                              //   builder: (context) => AlertDialog(
-                              //     title: const Text('Clear Chat?'),
-                              //     content: const Text('Are you sure you want to clear your side of this chat? This cannot be undone.'),
-                              //     actions: [
-                              //       TextButton(
-                              //         onPressed: () => Navigator.pop(context, false),
-                              //         child: const Text('Cancel'),
-                              //       ),
-                              //       TextButton(
-                              //         onPressed: () => Navigator.pop(context, true),
-                              //         child: const Text('Clear'),
-                              //       ),
-                              //     ],
-                              //   ),
-                              // );
-                              // if (confirm == true) {
-                              //   await _clearChatForCurrentUser();
-                              // }
-                            } else if (action == 'archive') {
-                              final userRef = FirebaseFirestore.instance.collection('users').doc(widget.currentUser.uid);
-                              final userDoc = await userRef.get();
-                              final data = userDoc.data() ?? {};
-                              final chatId = _getChatId();
-                              final archived = Set<String>.from(data['archivedChats'] ?? []);
-                              if (_isArchived) {
-                                archived.remove(chatId);
-                              } else {
-                                archived.add(chatId);
-                              }
-                              await userRef.update({'archivedChats': archived.toList()});
-                              setState(() => _isArchived = !_isArchived);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text(_isArchived ? 'Chat archived.' : 'Chat unarchived.')),
                               );
-                            } else if (action == 'mute') {
-                              final userRef = FirebaseFirestore.instance.collection('users').doc(widget.currentUser.uid);
-                              final userDoc = await userRef.get();
-                              final data = userDoc.data() ?? {};
-                              final chatId = _getChatId();
-                              final muted = Set<String>.from(data['mutedChats'] ?? []);
-                              if (_isMuted) {
-                                muted.remove(chatId);
-                              } else {
-                                muted.add(chatId);
-                              }
-                              await userRef.update({'mutedChats': muted.toList()});
-                              setState(() => _isMuted = !_isMuted);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text(_isMuted ? 'Chat muted.' : 'Chat unmuted.')),
-                              );
+                              setState(() => _selectedMessageIds.clear());
+                            },
+                          ),
+                        IconButton(
+                          icon: const Icon(Icons.delete),
+                          onPressed: () async {
+                            final chatId = _getChatId();
+                            for (final msgId in _selectedMessageIds) {
+                              await FirebaseFirestore.instance
+                                  .collection('chats')
+                                  .doc(chatId)
+                                  .collection('messages')
+                                  .doc(msgId)
+                                  .update({
+                                'isDeleted': true,
+                                'originalContent': '',
+                                'content': '',
+                              });
                             }
-                          },
-                          child: Row(
-                            children: [
-                              _buildUserAvatar(widget.otherUser, context, radius: 18, fontSize: 18),
-                              const SizedBox(width: 12),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(widget.otherUser.displayName, style: const TextStyle(fontSize: 18)),
-                                  if (!widget.isPersonalChat)
-                                    StreamBuilder<DocumentSnapshot>(
-                                      stream: FirebaseFirestore.instance
-                                          .collection('users')
-                                          .doc(widget.otherUser.uid)
-                                          .snapshots(),
-                                      builder: (context, snapshot) {
-                                        bool isOnline = false;
-                                        if (snapshot.hasData && snapshot.data!.data() != null) {
-                                          final data = snapshot.data!.data() as Map<String, dynamic>;
-                                          isOnline = data['isOnline'] as bool? ?? false;
-                                        }
-                                        return Text(
-                                          isOnline ? 'Online' : 'Offline',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: isOnline ? Colors.green : Colors.grey,
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        )
-                      : TextField(
-                          autofocus: true,
-                          decoration: InputDecoration(
-                            hintText: 'Search messages...',
-                            border: InputBorder.none,
-                            hintStyle: TextStyle(
-                              color: Theme.of(context).brightness == Brightness.dark
-                                  ? Colors.white70
-                                  : Colors.black54,
-                            ),
-                            filled: true,
-                            fillColor: Theme.of(context).appBarTheme.backgroundColor ?? (Theme.of(context).brightness == Brightness.dark ? Colors.grey[900] : Colors.white),
-                          ),
-                          style: TextStyle(
-                            color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black,
-                            fontSize: 18,
-                          ),
-                          cursorColor: Theme.of(context).colorScheme.primary,
-                          onChanged: (value) {
-                            setState(() {
-                              _messageSearchQuery = value.trim().toLowerCase();
-                            });
+                            setState(() => _selectedMessageIds.clear());
                           },
                         ),
+                      ],
+                    )
+                  : AppBar(
+                      title: !_isSearchingMessages
+                          ? GestureDetector(
+                              onTap: () async {
+                                if (widget.isPersonalChat) return; // No menu for personal chat
+                                final action = await showModalBottomSheet<String>(
+                                  context: context,
+                                  shape: const RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                                  ),
+                                  builder: (context) => SafeArea(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        ListTile(
+                                          leading: _buildUserAvatar(widget.otherUser, context, radius: 24, fontSize: 22),
+                                          title: Text(widget.otherUser.displayName, style: const TextStyle(fontSize: 18)),
+                                          subtitle: StreamBuilder<DocumentSnapshot>(
+                                            stream: FirebaseFirestore.instance
+                                                .collection('users')
+                                                .doc(widget.otherUser.uid)
+                                                .snapshots(),
+                                            builder: (context, snapshot) {
+                                              bool isOnline = false;
+                                              if (snapshot.hasData && snapshot.data!.data() != null) {
+                                                final data = snapshot.data!.data() as Map<String, dynamic>;
+                                                isOnline = data['isOnline'] as bool? ?? false;
+                                              }
+                                              return Text(
+                                                isOnline ? 'Online' : 'Offline',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: isOnline ? Colors.green : Colors.grey,
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                        const Divider(),
+                                        if (!widget.isPersonalChat) ...[
+                                          ListTile(
+                                            leading: Icon(_isArchived ? Icons.unarchive : Icons.archive_outlined),
+                                            title: Text(_isArchived ? 'Unarchive' : 'Archive'),
+                                            onTap: () async {
+                                              Navigator.pop(context, 'archive');
+                                            },
+                                          ),
+                                          ListTile(
+                                            leading: Icon(_isMuted ? Icons.notifications_active : Icons.notifications_off_outlined),
+                                            title: Text(_isMuted ? 'Unmute' : 'Mute'),
+                                            onTap: () async {
+                                              Navigator.pop(context, 'mute');
+                                            },
+                                          ),
+                                        ],
+                                        if (!widget.isPersonalChat)
+                                          ListTile(
+                                            leading: const Icon(Icons.format_paint),
+                                            title: const Text('Change Background'),
+                                            onTap: () async {
+                                              Navigator.pop(context);
+                                              showDialog(
+                                                context: context,
+                                                builder: (context) => _BackgroundPickerDialog(
+                                                  chatId: _getChatId(),
+                                                  currentUser: widget.currentUser,
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                                if (action == 'clear') {
+                                  // final confirm = await showDialog<bool>(
+                                  //   context: context,
+                                  //   builder: (context) => AlertDialog(
+                                  //     title: const Text('Clear Chat?'),
+                                  //     content: const Text('Are you sure you want to clear your side of this chat? This cannot be undone.'),
+                                  //     actions: [
+                                  //       TextButton(
+                                  //         onPressed: () => Navigator.pop(context, false),
+                                  //         child: const Text('Cancel'),
+                                  //       ),
+                                  //       TextButton(
+                                  //         onPressed: () => Navigator.pop(context, true),
+                                  //         child: const Text('Clear'),
+                                  //       ),
+                                  //     ],
+                                  //   ),
+                                  // );
+                                  // if (confirm == true) {
+                                  //   await _clearChatForCurrentUser();
+                                  // }
+                                } else if (action == 'archive') {
+                                  final userRef = FirebaseFirestore.instance.collection('users').doc(widget.currentUser.uid);
+                                  final userDoc = await userRef.get();
+                                  final data = userDoc.data() ?? {};
+                                  final chatId = _getChatId();
+                                  final archived = Set<String>.from(data['archivedChats'] ?? []);
+                                  if (_isArchived) {
+                                    archived.remove(chatId);
+                                  } else {
+                                    archived.add(chatId);
+                                  }
+                                  await userRef.update({'archivedChats': archived.toList()});
+                                  setState(() => _isArchived = !_isArchived);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text(_isArchived ? 'Chat archived.' : 'Chat unarchived.')),
+                                  );
+                                } else if (action == 'mute') {
+                                  final userRef = FirebaseFirestore.instance.collection('users').doc(widget.currentUser.uid);
+                                  final userDoc = await userRef.get();
+                                  final data = userDoc.data() ?? {};
+                                  final chatId = _getChatId();
+                                  final muted = Set<String>.from(data['mutedChats'] ?? []);
+                                  if (_isMuted) {
+                                    muted.remove(chatId);
+                                  } else {
+                                    muted.add(chatId);
+                                  }
+                                  await userRef.update({'mutedChats': muted.toList()});
+                                  setState(() => _isMuted = !_isMuted);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text(_isMuted ? 'Chat muted.' : 'Chat unmuted.')),
+                                  );
+                                }
+                              },
+                              child: Row(
+                                children: [
+                                  _buildUserAvatar(widget.otherUser, context, radius: 18, fontSize: 18),
+                                  const SizedBox(width: 12),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(widget.otherUser.displayName, style: const TextStyle(fontSize: 18)),
+                                      if (!widget.isPersonalChat)
+                                        StreamBuilder<DocumentSnapshot>(
+                                          stream: FirebaseFirestore.instance
+                                              .collection('users')
+                                              .doc(widget.otherUser.uid)
+                                              .snapshots(),
+                                          builder: (context, snapshot) {
+                                            bool isOnline = false;
+                                            if (snapshot.hasData && snapshot.data!.data() != null) {
+                                              final data = snapshot.data!.data() as Map<String, dynamic>;
+                                              isOnline = data['isOnline'] as bool? ?? false;
+                                            }
+                                            return Text(
+                                              isOnline ? 'Online' : 'Offline',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: isOnline ? Colors.green : Colors.grey,
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            )
+                          : TextField(
+                              autofocus: true,
+                              decoration: InputDecoration(
+                                hintText: 'Search messages...',
+                                border: InputBorder.none,
+                                hintStyle: TextStyle(
+                                  color: Theme.of(context).brightness == Brightness.dark
+                                      ? Colors.white70
+                                      : Colors.black54,
+                                ),
+                                filled: true,
+                                fillColor: Theme.of(context).appBarTheme.backgroundColor ?? (Theme.of(context).brightness == Brightness.dark ? Colors.grey[900] : Colors.white),
+                              ),
+                              style: TextStyle(
+                                color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black,
+                                fontSize: 18,
+                              ),
+                              cursorColor: Theme.of(context).colorScheme.primary,
+                              onChanged: (value) {
+                                setState(() {
+                                  _messageSearchQuery = value.trim().toLowerCase();
+                                });
+                              },
+                            ),
                   actions: [
                     if (!_isSearchingMessages)
                       IconButton(
@@ -1071,207 +1077,213 @@ class _ChatScreenState extends State<ChatScreen> {
                     ],
                   ],
                 ),
-          floatingActionButton: _showScrollToBottom
-              ? Padding(
-                  padding: const EdgeInsets.only(bottom: 80.0, left: 16.0),
-                  child: FloatingActionButton(
-                    mini: true,
-                    backgroundColor: Theme.of(context).primaryColor,
-                    child: const Icon(Icons.keyboard_arrow_down, color: Colors.white),
-                    onPressed: _scrollToBottom,
-                  ),
-                )
-              : null,
-          floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
+              floatingActionButton: _showScrollToBottom
+                  ? Padding(
+                      padding: const EdgeInsets.only(bottom: 80.0, left: 16.0),
+                      child: FloatingActionButton(
+                        mini: true,
+                        backgroundColor: Theme.of(context).primaryColor,
+                        child: const Icon(Icons.keyboard_arrow_down, color: Colors.white),
+                        onPressed: _scrollToBottom,
+                      ),
+                    )
+                  : null,
+              floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
           body: Stack(
             children: [
               ChatBackground(chatId: chatId),
               // Foreground: chat UI
               Column(
-                children: [
-                  Expanded(
-                    child: ListView.builder(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.all(8.0),
-                      itemCount: visibleMessages.length,
-                      itemBuilder: (context, index) {
-                        final message = visibleMessages[index];
-                        final isMe = message.senderId == widget.currentUser.uid;
-                        final previousMessage = index > 0 ? visibleMessages[index - 1] : null;
-                        final mediaMessages = visibleMessages
-                            .where((m) => m.type == MessageType.image || m.type == MessageType.video)
-                            .toList();
-                        final mediaIndex = (message.type == MessageType.image || message.type == MessageType.video)
-                            ? mediaMessages.indexWhere((m) => m.id == message.id)
-                            : null;
-                        return MessageBubble(
+                  children: [
+                    Expanded(
+                      child: ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.all(8.0),
+                        itemCount: visibleMessages.length,
+                        itemBuilder: (context, index) {
+                          final message = visibleMessages[index];
+                          final isMe = message.senderId == widget.currentUser.uid;
+                          final previousMessage = index > 0 ? visibleMessages[index - 1] : null;
+                          final mediaMessages = visibleMessages
+                              .where((m) => m.type == MessageType.image || m.type == MessageType.video)
+                              .toList();
+                          final mediaIndex = (message.type == MessageType.image || message.type == MessageType.video)
+                              ? mediaMessages.indexWhere((m) => m.id == message.id)
+                              : null;
+                          return MessageBubble(
                           key: ValueKey(message.id),
-                          message: message,
-                          isMe: isMe,
-                          onReply: (String? messageId, [bool? isEdit]) async {
-                            if (_isSelectionMode) return;
-                            if (messageId != null && isEdit != null) {
-                              if (isEdit) {
-                                final msg = messages.firstWhere((m) => m.id == messageId);
-                                final now = DateTime.now();
-                                if (now.difference(msg.timestamp!).inMinutes < 15 && !msg.isDeleted) {
-                                  final controller = TextEditingController(text: msg.content);
-                                  final result = await showDialog<String>(
-                                    context: context,
-                                    builder: (context) => AlertDialog(
-                                      title: const Text('Edit Message'),
-                                      content: TextField(
-                                        controller: controller,
-                                        maxLines: null,
+                            message: message,
+                            isMe: isMe,
+                            onReply: (String? messageId, [bool? isEdit]) async {
+                              if (_isSelectionMode) return;
+                              if (messageId != null && isEdit != null) {
+                                if (isEdit) {
+                                  final msg = messages.firstWhere((m) => m.id == messageId);
+                                  final now = DateTime.now();
+                                  if (now.difference(msg.timestamp!).inMinutes < 15 && !msg.isDeleted) {
+                                    final controller = TextEditingController(text: msg.content);
+                                    final result = await showDialog<String>(
+                                      context: context,
+                                      builder: (context) => AlertDialog(
+                                        title: const Text('Edit Message'),
+                                        content: TextField(
+                                          controller: controller,
+                                          maxLines: null,
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () => Navigator.pop(context),
+                                            child: const Text('Cancel'),
+                                          ),
+                                          TextButton(
+                                            onPressed: () => Navigator.pop(context, controller.text.trim()),
+                                            child: const Text('Save'),
+                                          ),
+                                        ],
                                       ),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () => Navigator.pop(context),
-                                          child: const Text('Cancel'),
-                                        ),
-                                        TextButton(
-                                          onPressed: () => Navigator.pop(context, controller.text.trim()),
-                                          child: const Text('Save'),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                  if (result != null && result.isNotEmpty && result != msg.content) {
+                                    );
+                                    if (result != null && result.isNotEmpty && result != msg.content) {
+                                      await FirebaseFirestore.instance
+                                        .collection('chats')
+                                        .doc(_getChatId())
+                                        .collection('messages')
+                                        .doc(msg.id)
+                                        .update({
+                                        'content': result,
+                                        'isEdited': true,
+                                        'editedAt': Timestamp.fromDate(DateTime.now()),
+                                      });
+                                    }
+                                  } else {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('You can only edit messages within 15 minutes of sending.')),
+                                    );
+                                  }
+                                } else {
+                                  final msg = messages.firstWhere((m) => m.id == messageId);
+                                  if (!msg.isDeleted) {
                                     await FirebaseFirestore.instance
                                       .collection('chats')
                                       .doc(_getChatId())
                                       .collection('messages')
                                       .doc(msg.id)
                                       .update({
-                                      'content': result,
-                                      'isEdited': true,
-                                      'editedAt': Timestamp.fromDate(DateTime.now()),
+                                      'isDeleted': true,
+                                      'originalContent': msg.content,
+                                      'content': '',
                                     });
                                   }
-                                } else {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('You can only edit messages within 15 minutes of sending.')),
-                                  );
                                 }
-                              } else {
+                              } else if (messageId != null && isEdit == null) {
                                 final msg = messages.firstWhere((m) => m.id == messageId);
-                                if (!msg.isDeleted) {
-                                  await FirebaseFirestore.instance
-                                    .collection('chats')
-                                    .doc(_getChatId())
-                                    .collection('messages')
-                                    .doc(msg.id)
-                                    .update({
-                                    'isDeleted': true,
-                                    'originalContent': msg.content,
-                                    'content': '',
-                                  });
+                                setState(() => _replyTo = msg);
+                              } else if (messageId == null) {
+                                setState(() => _replyTo = message);
+                              }
+                            },
+                            allMessages: allMessages,
+                            otherUserName: widget.otherUser.displayName,
+                            previousMessage: previousMessage,
+                            mediaMessages: mediaMessages.isNotEmpty ? mediaMessages : null,
+                            mediaIndex: mediaIndex,
+                            isSelected: _selectedMessageIds.contains(message.id),
+                            isSelectionMode: _isSelectionMode,
+                            onSelect: () {
+                              setState(() {
+                                if (_selectedMessageIds.contains(message.id)) {
+                                  _selectedMessageIds.remove(message.id);
+                                } else {
+                                  _selectedMessageIds.add(message.id);
                                 }
-                              }
-                            } else if (messageId != null && isEdit == null) {
-                              final msg = messages.firstWhere((m) => m.id == messageId);
-                              setState(() => _replyTo = msg);
-                            } else if (messageId == null) {
-                              setState(() => _replyTo = message);
-                            }
-                          },
-                          allMessages: allMessages,
-                          otherUserName: widget.otherUser.displayName,
-                          previousMessage: previousMessage,
-                          mediaMessages: mediaMessages.isNotEmpty ? mediaMessages : null,
-                          mediaIndex: mediaIndex,
-                          isSelected: _selectedMessageIds.contains(message.id),
-                          isSelectionMode: _isSelectionMode,
-                          onSelect: () {
-                            setState(() {
-                              if (_selectedMessageIds.contains(message.id)) {
-                                _selectedMessageIds.remove(message.id);
-                              } else {
+                              });
+                            },
+                            onStartSelection: () {
+                              setState(() {
                                 _selectedMessageIds.add(message.id);
-                              }
-                            });
-                          },
-                          onStartSelection: () {
-                            setState(() {
-                              _selectedMessageIds.add(message.id);
-                            });
-                          },
+                              });
+                            },
                           onTapRepliedMessage: (repliedId) => _scrollToMessageById(repliedId, visibleMessages),
                           highlight: _highlightedIndex == index,
-                        );
-                      },
-                    ),
-                  ),
-                  // Only show typing indicator if not a personal chat
-                  if (_isOtherTyping && !widget.isPersonalChat)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 16, bottom: 8),
-                      child: Row(
-                        children: [
-                          TypingBubble(),
-                          const SizedBox(width: 8),
-                          Text('${widget.otherUser.displayName} is typing...'),
-                        ],
+                          );
+                        },
                       ),
                     ),
-                  if (_replyTo != null) _buildReplyPreview(allMessages),
-                  MessageInput(
-                    controller: _messageController,
-                    isLoading: _isLoading,
-                    onSendMessage: () => _sendMessage(
-                      content: _messageController.text.trim(),
-                    ),
-                    onAttachmentPressed: () {
-                      showModalBottomSheet(
-                        context: context,
-                        builder: (context) => Column(
-                          mainAxisSize: MainAxisSize.min,
+                    // Only show typing indicator if not a personal chat
+                    if (_isOtherTyping && !widget.isPersonalChat)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 16, bottom: 8),
+                        child: Row(
                           children: [
-                            ListTile(
-                              leading: const Icon(Icons.image),
-                              title: const Text('Image'),
-                              onTap: () {
-                                Navigator.pop(context);
-                                _handleImageSelection();
-                              },
-                            ),
-                            ListTile(
-                              leading: const Icon(Icons.videocam),
-                              title: const Text('Video'),
-                              onTap: () {
-                                Navigator.pop(context);
-                                _handleVideoSelection();
-                              },
-                            ),
-                            ListTile(
-                              leading: const Icon(Icons.attach_file),
-                              title: const Text('File'),
-                              onTap: () {
-                                Navigator.pop(context);
-                                _handleFileSelection();
-                              },
-                            ),
+                            TypingBubble(),
+                            const SizedBox(width: 8),
+                            Text('${widget.otherUser.displayName} is typing...'),
                           ],
                         ),
-                      );
-                    },
-                    onEmojiPressed: _toggleEmojiPicker,
-                    onChanged: (_) => _onTyping(),
-                  ),
-                  if (_showEmoji)
-                    SizedBox(
-                      height: 250,
-                      child: EmojiPicker(
-                        onEmojiSelected: (category, emoji) => _onEmojiSelected(emoji),
                       ),
+                    if (_replyTo != null) _buildReplyPreview(allMessages),
+                    MessageInput(
+                      controller: _messageController,
+                      isLoading: false, // Always false
+                      onSendMessage: () => _sendMessage(
+                        content: _messageController.text.trim(),
+                      ),
+                      onAttachmentPressed: () {
+                        showModalBottomSheet(
+                          context: context,
+                          builder: (context) => Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ListTile(
+                                leading: const Icon(Icons.image),
+                                title: const Text('Image'),
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  _handleImageSelection();
+                                },
+                              ),
+                              ListTile(
+                                leading: const Icon(Icons.videocam),
+                                title: const Text('Video'),
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  _handleVideoSelection();
+                                },
+                              ),
+                              ListTile(
+                                leading: const Icon(Icons.attach_file),
+                                title: const Text('File'),
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  _handleFileSelection();
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                      onEmojiPressed: _toggleEmojiPicker,
+                      onChanged: (_) => _onTyping(),
+                      onFieldFocus: _closeEmojiPickerIfOpen,
                     ),
-                ],
-              ),
+                    if (_showEmoji)
+                      SizedBox(
+                        height: 250,
+                        child: EmojiPicker(
+                          onEmojiSelected: (category, emoji) => _onEmojiSelected(emoji),
+                        ),
+                      ),
+                  ],
+                ),
             ],
-          ),
+              ),
         );
       },
     );
+  }
+
+  // Add this method to close emoji picker if open
+  void _closeEmojiPickerIfOpen() {
+    if (_showEmoji) setState(() => _showEmoji = false);
   }
 }
 

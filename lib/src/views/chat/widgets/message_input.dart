@@ -7,6 +7,7 @@ class MessageInput extends StatefulWidget {
   final VoidCallback onAttachmentPressed;
   final VoidCallback onEmojiPressed;
   final ValueChanged<String>? onChanged;
+  final VoidCallback? onFieldFocus;
 
   const MessageInput({
     super.key,
@@ -16,6 +17,7 @@ class MessageInput extends StatefulWidget {
     required this.onAttachmentPressed,
     required this.onEmojiPressed,
     this.onChanged,
+    this.onFieldFocus,
   });
 
   @override
@@ -29,8 +31,8 @@ class _MessageInputState extends State<MessageInput> {
   void initState() {
     super.initState();
     _focusNode.addListener(() {
-      if (_focusNode.hasFocus && widget.onEmojiPressed != null) {
-        widget.onEmojiPressed(); // This will toggle emoji picker, so only close if open
+      if (_focusNode.hasFocus && widget.onFieldFocus != null) {
+        widget.onFieldFocus!();
       }
     });
   }

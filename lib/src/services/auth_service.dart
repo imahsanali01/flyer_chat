@@ -91,18 +91,17 @@ class AuthService extends ChangeNotifier with WidgetsBindingObserver {
     String password,
   ) async {
     try {
+      _isLoading = true;
+      notifyListeners();
       // First, try to get the user credential
       final credential = await _auth.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      // Wait for a short duration to allow Firebase Auth to complete its internal processes
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      // Get the current user
-      final currentUser = _auth.currentUser;
-      if (currentUser == null) {
+      // Wait for Firebase Auth state to update
+      final user = await _auth.authStateChanges().firstWhere((u) => u != null);
+      if (user == null) {
         throw FirebaseAuthException(
           code: 'null-user',
           message: 'Failed to sign in: No user returned',
@@ -112,32 +111,31 @@ class AuthService extends ChangeNotifier with WidgetsBindingObserver {
       // Check if user document exists
       final doc = await _firestore
           .collection('users')
-          .doc(currentUser.uid)
+          .doc(user.uid)
           .get();
 
       if (!doc.exists || doc.data() == null) {
         // Create user document if it doesn't exist
         final newUser = UserModel(
-          uid: currentUser.uid,
+          uid: user.uid,
           email: email,
-          displayName: currentUser.displayName ?? email.split('@')[0],
+          displayName: user.displayName ?? email.split('@')[0],
           lastSeen: DateTime.now(),
           status: 'Hey there! I am using Flyer Chat',
         );
-        
         final userData = newUser.toMap();
         await _firestore
             .collection('users')
-            .doc(currentUser.uid)
+            .doc(user.uid)
             .set(userData);
-            
         _user = newUser;
         notifyListeners();
       } else {
         // Load existing user data
-        await _loadUserData(currentUser.uid);
+        await _loadUserData(user.uid);
       }
-
+      _isLoading = false;
+      notifyListeners();
       return _user;
     } on FirebaseAuthException catch (e) {
       debugPrint('Firebase Auth Error: ${e.code} - ${e.message}');
