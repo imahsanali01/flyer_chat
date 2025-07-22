@@ -8,6 +8,7 @@ import 'chat_screen.dart';
 import 'dart:convert';
 import 'archived_chats_screen.dart';
 import 'package:intl/intl.dart';
+import 'dart:typed_data';
 
 class ChatListScreen extends StatefulWidget {
   const ChatListScreen({super.key});
@@ -144,7 +145,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
           // Personal chat tile at the top
           if (currentUser != null)
             ListTile(
-              leading: _buildUserAvatar(currentUser, context),
+              leading: CachedUserAvatar(user: currentUser, key: ValueKey(currentUser.photoBase64 ?? '')),
               title: const Text('Me', style: TextStyle(fontWeight: FontWeight.bold)),
               onTap: () {
                 Navigator.push(
@@ -321,7 +322,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                     return ListTile(
                                       leading: Stack(
                                         children: [
-                                          _buildUserAvatar(user, context),
+                                          CachedUserAvatar(user: user, key: ValueKey(user.photoBase64 ?? '')),
                                           Positioned(
                                             bottom: 2,
                                             right: 2,
@@ -557,7 +558,7 @@ class _ChatHeadsScreenState extends State<ChatHeadsScreen> {
                     child: Text('Recent', style: Theme.of(context).textTheme.titleMedium),
                   ),
                 ...filteredRecent.map((user) => ListTile(
-                      leading: _buildUserAvatar(user, context),
+                      leading: CachedUserAvatar(user: user, key: ValueKey(user.photoBase64 ?? '')),
                       title: Text(user.displayName),
                       onTap: () {
                         Navigator.pop(context);
@@ -578,7 +579,7 @@ class _ChatHeadsScreenState extends State<ChatHeadsScreen> {
                     child: Text('All Users', style: Theme.of(context).textTheme.titleMedium),
                   ),
                 ...filteredOthers.map((user) => ListTile(
-                      leading: _buildUserAvatar(user, context),
+                      leading: CachedUserAvatar(user: user, key: ValueKey(user.photoBase64 ?? '')),
                       title: Text(user.displayName),
                       onTap: () {
                         Navigator.pop(context);
@@ -602,24 +603,68 @@ class _ChatHeadsScreenState extends State<ChatHeadsScreen> {
   }
 }
 
-Widget _buildUserAvatar(UserModel user, BuildContext context) {
-  if (user.photoBase64 != null && user.photoBase64!.isNotEmpty) {
-    return CircleAvatar(
-      backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.15),
-      backgroundImage: MemoryImage(base64Decode(user.photoBase64!)),
-    );
-  } else if (user.avatarType == 'emoji' && user.avatarValue != null) {
-    return CircleAvatar(
-      backgroundColor: Colors.orange.withOpacity(0.2),
-      child: Text(user.avatarValue!, style: const TextStyle(fontSize: 22)),
-    );
-  } else {
-    return CircleAvatar(
-      backgroundColor: Theme.of(context).primaryColor,
-      child: Text(
-        user.displayName.isNotEmpty ? user.displayName[0].toUpperCase() : '',
-        style: const TextStyle(color: Colors.white),
-      ),
+class CachedUserAvatar extends StatefulWidget {
+  final UserModel user;
+  final double radius;
+  final double fontSize;
+  const CachedUserAvatar({Key? key, required this.user, this.radius = 24, this.fontSize = 22}) : super(key: key);
+
+  @override
+  State<CachedUserAvatar> createState() => _CachedUserAvatarState();
+}
+
+class _CachedUserAvatarState extends State<CachedUserAvatar> {
+  Uint8List? _imageBytes;
+  String? _lastBase64;
+
+  @override
+  void didUpdateWidget(covariant CachedUserAvatar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.user.photoBase64 != _lastBase64) {
+      _decodeImage();
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _decodeImage();
+  }
+
+  void _decodeImage() {
+    if (widget.user.photoBase64 != null && widget.user.photoBase64!.isNotEmpty) {
+      _imageBytes = base64Decode(widget.user.photoBase64!);
+      _lastBase64 = widget.user.photoBase64;
+    } else {
+      _imageBytes = null;
+      _lastBase64 = null;
+    }
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: _imageBytes != null
+          ? CircleAvatar(
+              radius: widget.radius,
+              backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.15),
+              backgroundImage: MemoryImage(_imageBytes!),
+            )
+          : (widget.user.avatarType == 'emoji' && widget.user.avatarValue != null)
+              ? CircleAvatar(
+                  radius: widget.radius,
+                  backgroundColor: Colors.orange.withOpacity(0.2),
+                  child: Text(widget.user.avatarValue!, style: TextStyle(fontSize: widget.fontSize)),
+                )
+              : CircleAvatar(
+                  radius: widget.radius,
+                  backgroundColor: Theme.of(context).primaryColor,
+                  child: Text(
+                    widget.user.displayName.isNotEmpty ? widget.user.displayName[0].toUpperCase() : '',
+                    style: TextStyle(color: Colors.white, fontSize: widget.fontSize),
+                  ),
+                ),
     );
   }
 } 
