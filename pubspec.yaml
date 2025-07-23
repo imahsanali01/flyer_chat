@@ -1,0 +1,69 @@
+name: flyer_chat
+description: A modern chat application with Flutter and Firebase.
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.7.2 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+ 
+  firebase_core: ^3.2.0
+  firebase_auth: ^5.1.2
+  cloud_firestore: ^5.1.0
+  firebase_storage: ^12.1.1
+  provider: ^6.1.1
+  shared_preferences: ^2.2.2
+  path_provider: ^2.1.1
+  image: ^4.1.3
+  flutter_sound: ^9.2.13
+  google_fonts: ^6.1.0
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  image_picker: ^1.0.7
+  file_picker: any
+  photo_view: ^0.14.0
+  cached_network_image: ^3.3.1
+  emoji_picker_flutter: ^2.2.0
+  video_player: ^2.8.2
+  flutter_chat_bubble: ^2.0.2
+  timeago: ^3.6.1
+  agora_rtc_engine: ^6.2.6
+  permission_handler: ^11.4.0
+  flutter_slidable: ^3.1.2
+  connectivity_plus: ^5.0.2
+  flutter_keyboard_visibility: ^6.0.0
+  chewie: ^1.7.5
+  uuid: ^4.2.2
+  intl: ^0.19.0
+  local_auth: ^2.1.8
+  flutter_secure_storage: ^9.0.0
+  device_info_plus: ^9.1.2
+  audioplayers: ^5.2.1
+  video_compress: ^3.1.2
+  video_thumbnail: ^0.5.6
+  flutter_colorpicker: ^1.1.0
+  shimmer: ^3.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+  hive_generator: ^2.0.1
+  build_runner: ^2.4.7
+  flutter_launcher_icons: ^0.13.1
+
+flutter_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/ic_launcher.png"
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/icons/ic_launcher.png
+    - assets/ring.mp3
