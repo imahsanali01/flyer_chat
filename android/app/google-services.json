@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "1040794750357",
+    "project_id": "chatterbox-app-12345",
+    "storage_bucket": "chatterbox-app-12345.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1040794750357:android:cb94370381a1f187fb7a9c",
+        "android_client_info": {
+          "package_name": "com.example.drag_drop_demo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCsxP6tZ1Ho9Fbrsm2oSXtxp6b-5vuaVns"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1040794750357:android:061e0f82e7536a91fb7a9c",
+        "android_client_info": {
+          "package_name": "com.flyerchat.flyer_chat"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCsxP6tZ1Ho9Fbrsm2oSXtxp6b-5vuaVns"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
