@@ -17,6 +17,8 @@ class ChatListScreen extends StatefulWidget {
   State<ChatListScreen> createState() => _ChatListScreenState();
 }
 
+
+
 class _ChatListScreenState extends State<ChatListScreen> {
   String _searchQuery = '';
   bool _isSearching = false;
