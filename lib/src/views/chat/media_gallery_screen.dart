@@ -7,6 +7,7 @@ import 'package:chewie/chewie.dart';
 import 'package:video_player/video_player.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../models/message_model.dart';
+import 'widgets/media_preview.dart'; // For CachedMessageImage
 
 class MediaGalleryScreen extends StatefulWidget {
   final List<MessageModel> mediaMessages;
@@ -25,12 +26,29 @@ class MediaGalleryScreen extends StatefulWidget {
 class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   late PageController _pageController;
   late int _currentIndex;
+  late List<Uint8List?> _imageBytesList;
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
     _pageController = PageController(initialPage: _currentIndex);
+    _imageBytesList = widget.mediaMessages.map((message) {
+      if (message.type == MessageType.image) {
+        String? base64;
+        if (message.content.isNotEmpty) {
+          base64 = message.content;
+        } else if (message.metadata != null && message.metadata?['base64'] != null) {
+          base64 = message.metadata?['base64'];
+        }
+        if (base64 != null && base64.isNotEmpty) {
+          try {
+            return base64Decode(base64);
+          } catch (_) {}
+        }
+      }
+      return null;
+    }).toList();
   }
 
   @override
@@ -53,18 +71,22 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
               itemBuilder: (context, index) {
                 final message = widget.mediaMessages[index];
                 if (message.type == MessageType.image) {
-                  Uint8List? imageBytes;
-                  if (message.content.isNotEmpty) {
-                    imageBytes = base64Decode(message.content);
-                  } else if (message.metadata != null && message.metadata?['base64'] != null) {
-                    imageBytes = base64Decode(message.metadata?['base64']);
-                  }
+                  final imageBytes = _imageBytesList[index];
                   if (imageBytes == null) return const Center(child: Icon(Icons.broken_image, color: Colors.white, size: 64));
                   return PhotoView(
                     imageProvider: MemoryImage(imageBytes),
                     backgroundDecoration: const BoxDecoration(color: Colors.black),
                     minScale: PhotoViewComputedScale.contained,
                     maxScale: PhotoViewComputedScale.covered * 3.0,
+                    loadingBuilder: (context, event) => Center(
+                      child: CachedMessageImage(
+                        base64: widget.mediaMessages[index].content.isNotEmpty
+                            ? widget.mediaMessages[index].content
+                            : (widget.mediaMessages[index].metadata?['base64'] ?? ''),
+                        fit: BoxFit.contain,
+                        borderRadius: BorderRadius.zero,
+                      ),
+                    ),
                   );
                 } else if (message.type == MessageType.video) {
                   return _GalleryVideoPlayer(message: message);

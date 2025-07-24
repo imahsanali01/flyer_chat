@@ -314,6 +314,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                         case 'file':
                                           subtitle = 'File';
                                           break;
+                                        case 'audio':
+                                          subtitle = 'Audio message';
+                                          break;
                                         default:
                                           subtitle = content;
                                       }
@@ -341,7 +344,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                         ],
                                       ),
                                       title: Text(user.displayName),
-                                      subtitle: Text(isTyping ? 'Typing...' : subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                      subtitle: Text(isTyping ? 'Typing...' : subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black),),
                                       trailing: Column(
                                         mainAxisAlignment: MainAxisAlignment.center,
                                         crossAxisAlignment: CrossAxisAlignment.end,

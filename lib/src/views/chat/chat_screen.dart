@@ -24,6 +24,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'chat_list_screen.dart'; // For ChatHeadsScreen
+import 'media_gallery_screen.dart';
 //app certificate secondary
 // e212492ef48b47ae9dc5508d28d6c806
 class ChatScreen extends StatefulWidget {
@@ -216,13 +217,11 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    // Clear the input immediately
-    _messageController.clear();
+    // Save replyTo for sending, then clear for UI
+    final replyToId = _replyTo?.id;
     _replyTo = null;
+    _messageController.clear();
     _scrollToBottom();
-
-    // No isLoading for send button
-    // setState(() => _isLoading = true);
 
     try {
       final messageId = const Uuid().v4();
@@ -233,10 +232,9 @@ class _ChatScreenState extends State<ChatScreen> {
         content: content ?? '',
         type: type,
         timestamp: DateTime.now(), // Placeholder, will be replaced by serverTimestamp
-        replyTo: _replyTo?.id,
+        replyTo: replyToId, // Use saved value
         metadata: metadata,
       ).toMap();
-      // Overwrite the timestamp with serverTimestamp
       messageMap['timestamp'] = FieldValue.serverTimestamp();
 
       await FirebaseFirestore.instance
@@ -246,18 +244,12 @@ class _ChatScreenState extends State<ChatScreen> {
           .doc(messageId)
           .set(messageMap);
 
-      // _messageController.clear(); // Already cleared above
-      // _replyTo = null; // Already cleared above
-      // _scrollToBottom(); // Already called above
-      // Immediately set typing status to false when message is sent
       _setTypingStatus(false);
       _typingTimer?.cancel();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.toString())),
       );
-    } finally {
-      // setState(() => _isLoading = false); // No loader on send button
     }
   }
 
@@ -444,8 +436,13 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildReplyPreview(Map<String, MessageModel> allMessages) {
     if (_replyTo == null) return const SizedBox.shrink();
     final repliedMessage = allMessages[_replyTo!.id];
+    if (repliedMessage == null) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    final borderColor = theme.colorScheme.secondary;
+    final senderColor = theme.colorScheme.secondary;
+    final bgColor = theme.brightness == Brightness.dark ? theme.colorScheme.surface : theme.colorScheme.background;
     Widget contentWidget;
-    if (repliedMessage != null && repliedMessage.type == MessageType.image) {
+    if (repliedMessage.type == MessageType.image) {
       Uint8List? imageBytes;
       if (repliedMessage.content.isNotEmpty) {
         imageBytes = base64Decode(repliedMessage.content);
@@ -453,17 +450,35 @@ class _ChatScreenState extends State<ChatScreen> {
         imageBytes = base64Decode(repliedMessage.metadata?['base64']);
       }
       contentWidget = imageBytes != null
-          ? ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: Image.memory(
-                imageBytes,
+          ? GestureDetector(
+              onTap: () {
+                final mediaList = allMessages.values
+                    .where((m) => m.type == MessageType.image || m.type == MessageType.video)
+                    .toList();
+                final index = mediaList.indexWhere((m) => m.id == repliedMessage.id);
+                if (index != -1) {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => MediaGalleryScreen(
+                        mediaMessages: mediaList,
+                        initialIndex: index,
+                      ),
+                    ),
+                  );
+                }
+              },
+              child: CachedMessageImage(
+                base64: repliedMessage.content.isNotEmpty
+                    ? repliedMessage.content
+                    : (repliedMessage.metadata?['base64'] ?? ''),
                 width: 48,
                 height: 48,
                 fit: BoxFit.cover,
+                borderRadius: BorderRadius.circular(6),
               ),
             )
-          : const Icon(Icons.broken_image, size: 32);
-    } else if (repliedMessage != null && repliedMessage.type == MessageType.video) {
+          : Icon(Icons.broken_image, size: 32, color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black);
+    } else if (repliedMessage.type == MessageType.video) {
       contentWidget = Container(
         width: 48,
         height: 48,
@@ -475,7 +490,19 @@ class _ChatScreenState extends State<ChatScreen> {
           child: Icon(Icons.play_circle_fill, color: Colors.white, size: 32),
         ),
       );
-    } else if (repliedMessage != null && repliedMessage.type == MessageType.file) {
+    } else if (repliedMessage.type == MessageType.audio) {
+      contentWidget = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.audiotrack, size: 24, color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.white,),
+          const SizedBox(width: 6),
+          const Text(
+            'Audio message',
+            style: TextStyle(fontSize: 13),
+          ),
+        ],
+      );
+    } else if (repliedMessage.type == MessageType.file) {
       final fileName = repliedMessage.metadata?['name'] ?? 'File';
       contentWidget = Row(
         mainAxisSize: MainAxisSize.min,
@@ -494,7 +521,7 @@ class _ChatScreenState extends State<ChatScreen> {
       );
     } else {
       contentWidget = Text(
-        repliedMessage?.content ?? '',
+        repliedMessage.content,
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
         style: const TextStyle(fontSize: 13),
@@ -504,11 +531,14 @@ class _ChatScreenState extends State<ChatScreen> {
       margin: const EdgeInsets.fromLTRB(8, 0, 8, 4),
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
       decoration: BoxDecoration(
-        color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[850] : Colors.grey[200],
-        borderRadius: BorderRadius.circular(12),
+        color: bgColor,
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(10),
+          topRight: Radius.circular(10),
+        ),
         border: Border(
           left: BorderSide(
-            color: Theme.of(context).primaryColor,
+            color: borderColor,
             width: 4,
           ),
         ),
@@ -520,15 +550,21 @@ class _ChatScreenState extends State<ChatScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  repliedMessage?.senderId == widget.currentUser.uid ? 'You' : widget.otherUser.displayName,
+                  repliedMessage.senderId == widget.currentUser.uid ? 'You' : widget.otherUser.displayName,
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
-                    color: Theme.of(context).primaryColor,
+                    color: senderColor,
                     fontSize: 12,
                   ),
                 ),
                 const SizedBox(height: 2),
                 contentWidget,
+                const SizedBox(height: 4),
+                Container(
+                  height: 1,
+                  color: (Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black12).withOpacity(0.15),
+                  margin: const EdgeInsets.only(top: 2, bottom: 2),
+                ),
               ],
             ),
           ),
@@ -838,12 +874,18 @@ class _ChatScreenState extends State<ChatScreen> {
                           onPressed: () async {
                             final chatId = _getChatId();
                             for (final msgId in _selectedMessageIds) {
-                              await FirebaseFirestore.instance
-                                  .collection('chats')
-                                  .doc(chatId)
-                                  .collection('messages')
-                                  .doc(msgId)
-                                  .update({
+                              final docRef = FirebaseFirestore.instance
+                                .collection('chats')
+                                .doc(chatId)
+                                .collection('messages')
+                                .doc(msgId);
+                              final doc = await docRef.get();
+                              final data = doc.data() as Map<String, dynamic>;
+                              if (data['type'] == 'audio' && data['metadata'] != null && data['metadata']['publicId'] != null) {
+                                // Call backend or placeholder to delete from Cloudinary
+                                await _mediaService.deleteCloudinaryAudio(data['metadata']['publicId']);
+                              }
+                              await docRef.update({
                                 'isDeleted': true,
                                 'originalContent': '',
                                 'content': '',
@@ -1264,6 +1306,24 @@ class _ChatScreenState extends State<ChatScreen> {
                       onEmojiPressed: _toggleEmojiPicker,
                       onChanged: (_) => _onTyping(),
                       onFieldFocus: _closeEmojiPickerIfOpen,
+                      onSendAudio: (audioPath) async {
+                        setState(() => _isLoading = true);
+                        final result = await _mediaService.uploadAudio(
+                          userId: widget.currentUser.uid,
+                          filePath: audioPath,
+                        );
+                        setState(() => _isLoading = false);
+                        if (result != null && result['base64'] != null) {
+                          await _sendMessage(
+                            content: result['base64'],
+                            type: MessageType.audio,
+                          );
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Failed to upload audio.')),
+                          );
+                        }
+                      },
                     ),
                     if (_showEmoji)
                       SizedBox(
@@ -1876,6 +1936,8 @@ class _TypingBubbleState extends State<TypingBubble> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final dotColor = theme.colorScheme.secondary;
     return SizedBox(
       width: 36,
       height: 20,
@@ -1888,7 +1950,7 @@ class _TypingBubbleState extends State<TypingBubble> with SingleTickerProviderSt
               offset: Offset(0, _dot1Anim.value),
               child: child,
             ),
-            child: _buildDot(context),
+            child: _buildDot(dotColor),
           ),
           const SizedBox(width: 4),
           AnimatedBuilder(
@@ -1897,7 +1959,7 @@ class _TypingBubbleState extends State<TypingBubble> with SingleTickerProviderSt
               offset: Offset(0, _dot2Anim.value),
               child: child,
             ),
-            child: _buildDot(context),
+            child: _buildDot(dotColor),
           ),
           const SizedBox(width: 4),
           AnimatedBuilder(
@@ -1906,20 +1968,27 @@ class _TypingBubbleState extends State<TypingBubble> with SingleTickerProviderSt
               offset: Offset(0, _dot3Anim.value),
               child: child,
             ),
-            child: _buildDot(context),
+            child: _buildDot(dotColor),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildDot(BuildContext context) {
+  Widget _buildDot(Color dotColor) {
     return Container(
       width: 8,
       height: 8,
       decoration: BoxDecoration(
-        color: Colors.grey[600],
+        color: dotColor,
         shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: dotColor.withOpacity(0.4),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
     );
   }

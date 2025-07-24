@@ -7,6 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import 'dart:convert';
 import 'package:image/image.dart' as img;
 import 'package:video_compress/video_compress.dart';
+import 'package:cloudinary_public/cloudinary_public.dart';
 
 class MediaService {
   final FirebaseStorage _storage = FirebaseStorage.instance;
@@ -91,20 +92,70 @@ class MediaService {
     }
   }
 
-  Future<String?> uploadAudio({
+  Future<Map<String, String>?> uploadAudio({
     required String userId,
     required String filePath,
   }) async {
     try {
-      final String fileName = '${const Uuid().v4()}.aac';
-      final Reference ref = _storage.ref().child('messages/$userId/audio/$fileName');
+      // --- BASE64 ENCODE FOR FIRESTORE (active) ---
+      final file = File(filePath);
+      final bytes = await file.readAsBytes();
+      final base64Audio = base64Encode(bytes);
+      return {
+        'base64': base64Audio,
+        'publicId': '', // Not used
+      };
 
+      // --- FIREBASE STORAGE UPLOAD (keep for future) ---
+      /*
+      final String fileName = '${const Uuid().v4()}.m4a';
+      final Reference ref = _storage.ref().child('messages/$userId/audio/$fileName');
       final UploadTask uploadTask = ref.putFile(File(filePath));
       final TaskSnapshot snapshot = await uploadTask;
-      return await snapshot.ref.getDownloadURL();
+      final url = await snapshot.ref.getDownloadURL();
+      return {
+        'url': url,
+        'publicId': '',
+      };
+      */
+
+      // --- CLOUDINARY UPLOAD (keep for future) ---
+      /*
+      final cloudinary = CloudinaryPublic(
+        'dyyjb1ekx',
+        'unsigned',
+        cache: false,
+      );
+      final response = await cloudinary.uploadFile(
+        CloudinaryFile.fromFile(
+          filePath,
+          resourceType: CloudinaryResourceType.Video,
+          folder: 'flyer_chat/audio/$userId',
+        ),
+      );
+      return {
+        'url': response.secureUrl,
+        'publicId': response.publicId,
+      };
+      */
     } catch (e) {
       print('Error uploading audio: $e');
       return null;
+    }
+  }
+
+  Future<bool> deleteCloudinaryAudio(String publicId) async {
+    try {
+      final cloudinary = CloudinaryPublic(
+        'dyyjb1ekx',
+        'unsigned',
+        cache: false,
+      );
+     // await cloudinary.deleteFile(publicId: publicId, resourceType: CloudinaryResourceType.Video); // todo: delete audio from cloudinary requires backend
+      return true;
+    } catch (e) {
+      print('Error deleting audio from Cloudinary: $e');
+      return false;
     }
   }
 

@@ -202,16 +202,20 @@ class _MediaPreviewState extends State<MediaPreview> {
       case MessageType.file:
         final metadata = widget.message.metadata;
         if (metadata == null) return const SizedBox.shrink();
+        final theme = Theme.of(context);
+        final bgColor = theme.brightness == Brightness.dark ? theme.colorScheme.surface : theme.colorScheme.background;
+        final iconColor = theme.colorScheme.secondary;
+        final textColor = theme.brightness == Brightness.dark ? Colors.white : Colors.black87;
         return Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: Colors.grey[100],
+            color: bgColor,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.attach_file),
+              Icon(Icons.attach_file, color: iconColor),
               const SizedBox(width: 8),
               Flexible(
                 child: Column(
@@ -222,16 +226,16 @@ class _MediaPreviewState extends State<MediaPreview> {
                       metadata['name'] != null ? metadata['name'] as String : 'File',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                      style: TextStyle(fontWeight: FontWeight.bold, color: textColor),
                     ),
                     Text(
                       metadata['size'] != null ? '${metadata['size']} bytes' : '',
-                      style: const TextStyle(fontSize: 12),
+                      style: TextStyle(fontSize: 12, color: textColor.withOpacity(0.7)),
                     ),
                     if (metadata['base64'] != null)
                       TextButton.icon(
-                        icon: const Icon(Icons.download),
-                        label: const Text('Download'),
+                        icon: Icon(Icons.download, color: iconColor),
+                        label: Text('Download', style: TextStyle(color: iconColor)),
                         onPressed: () async {
                           try {
                             final bytes = base64Decode(metadata['base64']);
