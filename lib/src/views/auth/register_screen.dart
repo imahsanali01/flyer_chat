@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/auth_service.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import '../../utils/app_info_util.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -20,6 +22,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _showConfirmPassword = false;
   String _passwordStrengthLabel = '';
   Color _passwordStrengthColor = Colors.grey;
+  String? _appVersion;
 
   void _updatePasswordStrength(String password) {
     int score = 0;
@@ -42,6 +45,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _passwordStrengthLabel = '';
       _passwordStrengthColor = Colors.grey;
     }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAppVersion();
+  }
+
+  Future<void> _loadAppVersion() async {
+    final version = await getAppVersionString();
+    setState(() {
+      _appVersion = version;
+    });
   }
 
   @override
@@ -234,6 +250,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                   ),
                 ),
+                const SizedBox(height: 32),
+                if (_appVersion != null)
+                  Center(
+                    child: Text(
+                      'App Version: ${_appVersion!}',
+                      style: const TextStyle(color: Colors.grey, fontSize: 14),
+                    ),
+                  ),
               ],
             ),
           ),

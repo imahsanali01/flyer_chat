@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import '../../services/auth_service.dart';
 import 'register_screen.dart';
 import '../../views/chat/chat_list_screen.dart'; // Correct import for ChatListScreen
+import 'package:package_info_plus/package_info_plus.dart';
+import '../../utils/app_info_util.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -16,6 +18,20 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
+  String? _appVersion;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAppVersion();
+  }
+
+  Future<void> _loadAppVersion() async {
+    final version = await getAppVersionString();
+    setState(() {
+      _appVersion = version;
+    });
+  }
 
   @override
   void dispose() {
@@ -135,6 +151,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   },
                   child: const Text("Don't have an account? Register"),
                 ),
+                const SizedBox(height: 32),
+                if (_appVersion != null)
+                  Center(
+                    child: Text(
+                      'App Version: ${_appVersion!}',
+                      style: const TextStyle(color: Colors.grey, fontSize: 14),
+                    ),
+                  ),
               ],
             ),
           ),

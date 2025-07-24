@@ -11,6 +11,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:convert';
 import '../../../main.dart'; // <-- Import ThemeProvider
+import 'package:package_info_plus/package_info_plus.dart';
+import '../../utils/app_info_util.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -23,11 +25,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isBiometricAvailable = false;
   bool _isLoading = false;
   String? _errorMessage;
+  String? _appVersion;
 
   @override
   void initState() {
     super.initState();
     _checkBiometricAvailability();
+    _loadAppVersion();
   }
 
   Future<void> _checkBiometricAvailability() async {
@@ -75,6 +79,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } finally {
       setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _loadAppVersion() async {
+    final version = await getAppVersionString();
+    setState(() {
+      _appVersion = version;
+    });
   }
 
   @override
@@ -380,6 +391,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
             ),
           ),
+          const SizedBox(height: 32),
+          if (_appVersion != null)
+            Center(
+              child: Text(
+                'App Version:  ${_appVersion!}',
+                style: const TextStyle(color: Colors.grey, fontSize: 14),
+              ),
+            ),
         ],
       ),
     );
