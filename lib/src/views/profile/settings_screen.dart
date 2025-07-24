@@ -13,6 +13,7 @@ import 'dart:convert';
 import '../../../main.dart'; // <-- Import ThemeProvider
 import 'package:package_info_plus/package_info_plus.dart';
 import '../../utils/app_info_util.dart';
+import 'theme_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -194,7 +195,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         
           if (user != null) ...[
             const SizedBox(height: 16),
-            Card(
+                Card(
               child: ListTile(
                 leading: const Icon(Icons.person),
                 title: const Text('Display Name'),
@@ -203,41 +204,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onTap: _isLoading ? null : _editDisplayName,
               ),
             ),
-          ],
-          const SizedBox(height: 16),
-            // Theme mode switch
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.brightness_6),
-              title: const Text('App Theme'),
-              subtitle: Consumer<ThemeProvider>(
-                builder: (context, themeProvider, _) {
-                  return DropdownButton<ThemeMode>(
-                    value: themeProvider.themeMode,
-                    onChanged: (mode) {
-                      if (mode != null) {
-                        themeProvider.setThemeMode(mode);
-                      }
-                    },
-                    items: const [
-                      DropdownMenuItem(
-                        value: ThemeMode.system,
-                        child: Text('System'),
-                      ),
-                      DropdownMenuItem(
-                        value: ThemeMode.light,
-                        child: Text('Light'),
-                      ),
-                      DropdownMenuItem(
-                        value: ThemeMode.dark,
-                        child: Text('Dark'),
-                      ),
-                    ],
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.brightness_6),
+                title: const Text('App Theme'),
+                subtitle: Consumer<ThemeProvider>(
+                  builder: (context, themeProvider, _) {
+                    return DropdownButton<ThemeMode>(
+                      value: themeProvider.themeMode,
+                      onChanged: (mode) {
+                        if (mode != null) {
+                          themeProvider.setThemeMode(mode);
+                        }
+                      },
+                      items: const [
+                        DropdownMenuItem(
+                          value: ThemeMode.system,
+                          child: Text('System'),
+                        ),
+                        DropdownMenuItem(
+                          value: ThemeMode.light,
+                          child: Text('Light'),
+                        ),
+                        DropdownMenuItem(
+                          value: ThemeMode.dark,
+                          child: Text('Dark'),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+            // Theme & Colors (move this below App Theme)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.palette),
+                title: const Text('Theme & Colors'),
+                subtitle: const Text('Customize app colors'),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => ThemeSettingsScreen(),
+                    ),
                   );
                 },
               ),
             ),
-          ),
+        
+          ],
           const SizedBox(height: 26),
           if (_errorMessage != null)
             Padding(

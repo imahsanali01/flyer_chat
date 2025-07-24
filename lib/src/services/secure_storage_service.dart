@@ -8,6 +8,7 @@ class SecureStorageService {
   // Keys
   static const _credentialsKey = '${_keyPrefix}credentials';
   static const _biometricEnabledKey = '${_keyPrefix}biometric_enabled';
+  static const _themeColorsKey = '${_keyPrefix}theme_colors';
 
   Future<void> storeCredentials(String email, String password) async {
     final credentials = {
@@ -51,5 +52,25 @@ class SecureStorageService {
 
   Future<void> deleteAllData() async {
     await _storage.deleteAll();
+  }
+/// will use this to store the theme colors in future from settings screen
+  Future<void> storeThemeColors(Map<String, String> colorHexMap) async {
+    await _storage.write(
+      key: _themeColorsKey,
+      value: json.encode(colorHexMap),
+    );
+  }
+
+  Future<Map<String, String>?> getThemeColors() async {
+    final data = await _storage.read(key: _themeColorsKey);
+    if (data != null) {
+      final Map<String, dynamic> decoded = json.decode(data);
+      return decoded.map((k, v) => MapEntry(k, v as String));
+    }
+    return null;
+  }
+
+  Future<void> deleteThemeColors() async {
+    await _storage.delete(key: _themeColorsKey);
   }
 } 
